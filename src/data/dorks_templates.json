@@ -1,0 +1,101 @@
+{
+  "categories": {
+    "person_search": {
+      "name": "Person Search",
+      "icon": "person",
+      "description": "Find information about a specific person",
+      "templates": [
+        {"name": "Full Name Search", "template": "\"{target}\"", "description": "Search for exact name"},
+        {"name": "Social Profiles", "template": "\"{target}\" site:linkedin.com OR site:facebook.com OR site:twitter.com", "description": "Find social media profiles"},
+        {"name": "Email Addresses", "template": "\"{target}\" email OR \"@gmail.com\" OR \"@yahoo.com\" OR \"@hotmail.com\"", "description": "Find associated email addresses"},
+        {"name": "Phone Numbers", "template": "\"{target}\" phone OR \"tel:\" OR \"+1\"", "description": "Find associated phone numbers"},
+        {"name": "Addresses", "template": "\"{target}\" address OR location OR \"lives in\" OR \"from\"", "description": "Find location information"},
+        {"name": "Images", "template": "\"{target}\" site:instagram.com OR site:flickr.com OR site:pinterest.com", "description": "Find photos"},
+        {"name": "News Articles", "template": "\"{target}\" site:news.google.com OR site:reuters.com OR site:bbc.com", "description": "Find news mentions"},
+        {"name": "Court Records", "template": "\"{target}\" site:pacer.gov OR court OR lawsuit OR criminal", "description": "Find court records"},
+        {"name": "Professional Info", "template": "\"{target}\" CEO OR CTO OR founder OR \"senior\" OR director", "description": "Find professional information"},
+        {"name": "Academic Papers", "template": "\"{target}\" site:scholar.google.com OR site:researchgate.net OR site:academia.edu", "description": "Find academic publications"}
+      ]
+    },
+    "domain_osint": {
+      "name": "Domain OSINT",
+      "icon": "globe",
+      "description": "Gather intelligence on a domain",
+      "templates": [
+        {"name": "Subdomains", "template": "site:{target}", "description": "Find all indexed pages and subdomains"},
+        {"name": "Login Pages", "template": "site:{target} inurl:login OR inurl:signin OR inurl:admin", "description": "Find login/admin pages"},
+        {"name": "Exposed Files", "template": "site:{target} ext:pdf OR ext:doc OR ext:xls OR ext:txt OR ext:csv", "description": "Find exposed documents"},
+        {"name": "Config Files", "template": "site:{target} ext:xml OR ext:conf OR ext:cnf OR ext:ini OR ext:env", "description": "Find configuration files"},
+        {"name": "Backup Files", "template": "site:{target} ext:bak OR ext:backup OR ext:old OR ext:orig", "description": "Find backup files"},
+        {"name": "Database Files", "template": "site:{target} ext:sql OR ext:db OR ext:sqlite", "description": "Find database files"},
+        {"name": "Directory Listing", "template": "site:{target} intitle:\"index of\" OR \"parent directory\"", "description": "Find open directory listings"},
+        {"name": "Error Pages", "template": "site:{target} \"error\" OR \"exception\" OR \"stack trace\" OR \"SQL syntax\"", "description": "Find error pages revealing info"},
+        {"name": "WordPress Sites", "template": "site:{target} inurl:wp-content OR inurl:wp-admin", "description": "Find WordPress installations"},
+        {"name": "API Endpoints", "template": "site:{target} inurl:/api/ OR inurl:/v1/ OR inurl:/v2/ OR inurl:/rest/", "description": "Find API endpoints"},
+        {"name": "Email Addresses", "template": "site:{target} \"@{target}\"", "description": "Find email addresses on domain"},
+        {"name": "Technology Stack", "template": "site:{target} \"powered by\" OR \"built with\" OR \"version\" technology", "description": "Find technology stack info"},
+        {"name": "Git Exposure", "template": "site:{target} inurl:/.git OR inurl:/.svn OR inurl:/.hg", "description": "Find exposed source control"},
+        {"name": "Pastebin Mentions", "template": "site:pastebin.com {target}", "description": "Find pastes mentioning the domain"},
+        {"name": "Cached Pages", "template": "cache:{target}", "description": "View Google's cached pages"}
+      ]
+    },
+    "file_search": {
+      "name": "File Search",
+      "icon": "file",
+      "description": "Search for specific file types",
+      "templates": [
+        {"name": "PDF Documents", "template": "site:{target} filetype:pdf", "description": "Find PDF files"},
+        {"name": "Excel Files", "template": "site:{target} filetype:xls OR filetype:xlsx", "description": "Find Excel spreadsheets"},
+        {"name": "Word Documents", "template": "site:{target} filetype:doc OR filetype:docx", "description": "Find Word documents"},
+        {"name": "PowerPoint Files", "template": "site:{target} filetype:ppt OR filetype:pptx", "description": "Find PowerPoint files"},
+        {"name": "SQL Dumps", "template": "site:{target} filetype:sql", "description": "Find SQL dump files"},
+        {"name": "Log Files", "template": "site:{target} filetype:log", "description": "Find log files"},
+        {"name": "Password Files", "template": "site:{target} filetype:txt \"password\" OR \"passwd\"", "description": "Find files containing passwords"},
+        {"name": "Private Keys", "template": "site:{target} \"BEGIN RSA PRIVATE KEY\" OR \"BEGIN OPENSSH PRIVATE KEY\"", "description": "Find exposed private keys"},
+        {"name": "XML Files", "template": "site:{target} filetype:xml", "description": "Find XML configuration files"},
+        {"name": "JSON Files", "template": "site:{target} filetype:json", "description": "Find JSON data files"}
+      ]
+    },
+    "vulnerability_search": {
+      "name": "Vulnerability Discovery",
+      "icon": "shield",
+      "description": "Find potential vulnerabilities (authorized testing only)",
+      "templates": [
+        {"name": "SQL Injection Points", "template": "site:{target} inurl:\"id=\" OR inurl:\"cat=\" OR inurl:\"num=\"", "description": "Find potential SQL injection points"},
+        {"name": "PHP Errors", "template": "site:{target} \"Warning: mysql_fetch\" OR \"Warning: mysql_num_rows\" OR \"PHP Parse error\"", "description": "Find PHP error exposure"},
+        {"name": "Admin Panels", "template": "site:{target} inurl:admin OR inurl:administrator OR inurl:backend OR inurl:control", "description": "Find admin panels"},
+        {"name": "Exposed Cameras", "template": "site:{target} inurl:\"view/index.shtml\" OR inurl:\"mjpg/video.mjpg\"", "description": "Find exposed cameras"},
+        {"name": "phpMyAdmin", "template": "site:{target} inurl:phpmyadmin OR inurl:pma", "description": "Find phpMyAdmin installations"},
+        {"name": "Exposed .htaccess", "template": "site:{target} inurl:.htaccess OR inurl:.htpasswd", "description": "Find exposed htaccess files"},
+        {"name": "Robots.txt Content", "template": "site:{target} inurl:robots.txt", "description": "Find robots.txt files"},
+        {"name": "Sitemap Files", "template": "site:{target} inurl:sitemap.xml", "description": "Find sitemap files"},
+        {"name": "Debug Pages", "template": "site:{target} inurl:debug OR inurl:test OR inurl:dev", "description": "Find debug/test pages"},
+        {"name": "AWS Buckets", "template": "site:{target} s3.amazonaws.com OR \"amazonaws.com/\"", "description": "Find AWS S3 buckets"}
+      ]
+    },
+    "social_engineering": {
+      "name": "Social Engineering Research",
+      "icon": "people",
+      "description": "Research for social engineering awareness",
+      "templates": [
+        {"name": "Employee Names", "template": "site:{target} \"staff\" OR \"team\" OR \"employee\" OR \"our people\"", "description": "Find employee information"},
+        {"name": "Org Chart", "template": "site:{target} \"organizational chart\" OR \"org chart\" OR \"management team\"", "description": "Find organizational structure"},
+        {"name": "Job Postings", "template": "site:{target} site:linkedin.com/jobs OR site:indeed.com OR site:glassdoor.com", "description": "Find job postings revealing tech stack"},
+        {"name": "Contact Info", "template": "site:{target} \"contact us\" OR \"get in touch\" email phone", "description": "Find contact information"},
+        {"name": "Event Info", "template": "site:{target} OR \"{target}\" conference OR event OR webinar OR meetup", "description": "Find public events"}
+      ]
+    },
+    "network_search": {
+      "name": "Network & Infrastructure",
+      "icon": "network",
+      "description": "Find network and infrastructure information",
+      "templates": [
+        {"name": "IP Ranges", "template": "\"{target}\" \"IP range\" OR CIDR OR subnet", "description": "Find IP ranges"},
+        {"name": "Network Devices", "template": "site:{target} inurl:\"router\" OR inurl:\"switch\" OR inurl:\"firewall\"", "description": "Find network device admin pages"},
+        {"name": "VPN Portals", "template": "site:{target} inurl:vpn OR inurl:\"remote access\" OR inurl:ssl-vpn", "description": "Find VPN portals"},
+        {"name": "Mail Servers", "template": "site:{target} inurl:webmail OR inurl:mail OR inurl:owa", "description": "Find webmail portals"},
+        {"name": "Cloud Storage", "template": "\"{target}\" site:drive.google.com OR site:dropbox.com OR site:onedrive.live.com", "description": "Find cloud storage links"}
+      ]
+    }
+  }
+}

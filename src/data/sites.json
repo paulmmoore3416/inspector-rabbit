@@ -1,0 +1,618 @@
+{
+  "GitHub": {
+    "url": "https://github.com/{}",
+    "url_probe": "https://api.github.com/users/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "GitLab": {
+    "url": "https://gitlab.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Bitbucket": {
+    "url": "https://bitbucket.org/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "HackerNews": {
+    "url": "https://news.ycombinator.com/user?id={}",
+    "error_type": "message",
+    "error_msg": "No such user.",
+    "category": "tech"
+  },
+  "Reddit": {
+    "url": "https://www.reddit.com/user/{}",
+    "url_probe": "https://www.reddit.com/user/{}/about.json",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Instagram": {
+    "url": "https://www.instagram.com/{}/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "TikTok": {
+    "url": "https://www.tiktok.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Twitter": {
+    "url": "https://twitter.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Pinterest": {
+    "url": "https://www.pinterest.com/{}/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Tumblr": {
+    "url": "https://{}.tumblr.com/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Medium": {
+    "url": "https://medium.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Quora": {
+    "url": "https://www.quora.com/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "YouTube": {
+    "url": "https://www.youtube.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "media"
+  },
+  "Vimeo": {
+    "url": "https://vimeo.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "media"
+  },
+  "Twitch": {
+    "url": "https://www.twitch.tv/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Steam": {
+    "url": "https://steamcommunity.com/id/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Flickr": {
+    "url": "https://www.flickr.com/people/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "photo"
+  },
+  "DeviantArt": {
+    "url": "https://www.deviantart.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "art"
+  },
+  "Behance": {
+    "url": "https://www.behance.net/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "art"
+  },
+  "Dribbble": {
+    "url": "https://dribbble.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "art"
+  },
+  "SoundCloud": {
+    "url": "https://soundcloud.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Spotify": {
+    "url": "https://open.spotify.com/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Keybase": {
+    "url": "https://keybase.io/{}",
+    "url_probe": "https://keybase.io/{}/overview",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "security"
+  },
+  "Patreon": {
+    "url": "https://www.patreon.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "ProductHunt": {
+    "url": "https://www.producthunt.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "tech"
+  },
+  "AngelList": {
+    "url": "https://angel.co/u/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "professional"
+  },
+  "Replit": {
+    "url": "https://replit.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Codepen": {
+    "url": "https://codepen.io/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "NPM": {
+    "url": "https://www.npmjs.com/~{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "PyPI": {
+    "url": "https://pypi.org/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "DockerHub": {
+    "url": "https://hub.docker.com/u/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Hackerone": {
+    "url": "https://hackerone.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "security"
+  },
+  "Bugcrowd": {
+    "url": "https://bugcrowd.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "security"
+  },
+  "Trello": {
+    "url": "https://trello.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "productivity"
+  },
+  "SourceForge": {
+    "url": "https://sourceforge.net/u/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "StackOverflow": {
+    "url": "https://stackoverflow.com/users/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Mastodon": {
+    "url": "https://mastodon.social/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Telegram": {
+    "url": "https://t.me/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "messaging"
+  },
+  "Signal": {
+    "url": "https://signal.org/en/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "messaging"
+  },
+  "Snapchat": {
+    "url": "https://www.snapchat.com/add/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Linktree": {
+    "url": "https://linktr.ee/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "About.me": {
+    "url": "https://about.me/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "professional"
+  },
+  "Gravatar": {
+    "url": "https://en.gravatar.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "identity"
+  },
+  "WordPress": {
+    "url": "https://{}.wordpress.com",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Blogger": {
+    "url": "https://{}.blogspot.com",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Wix": {
+    "url": "https://www.wix.com/website/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "web"
+  },
+  "Xbox": {
+    "url": "https://account.xbox.com/en-US/Profile?Gamertag={}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "PSN": {
+    "url": "https://my.playstation.com/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Leetcode": {
+    "url": "https://leetcode.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Kaggle": {
+    "url": "https://www.kaggle.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "data"
+  },
+  "Fiverr": {
+    "url": "https://www.fiverr.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "freelance"
+  },
+  "Upwork": {
+    "url": "https://www.upwork.com/freelancers/~{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "freelance"
+  },
+  "Etsy": {
+    "url": "https://www.etsy.com/shop/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "commerce"
+  },
+  "Ebay": {
+    "url": "https://www.ebay.com/usr/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "commerce"
+  },
+  "Stripe": {
+    "url": "https://stripe.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "finance"
+  },
+  "Substack": {
+    "url": "https://{}.substack.com",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Ghost": {
+    "url": "https://{}.ghost.io",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Hashnode": {
+    "url": "https://hashnode.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "DEV.to": {
+    "url": "https://dev.to/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Goodreads": {
+    "url": "https://www.goodreads.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "books"
+  },
+  "Letterboxd": {
+    "url": "https://letterboxd.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "entertainment"
+  },
+  "IMDb": {
+    "url": "https://www.imdb.com/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "entertainment"
+  },
+  "Last.fm": {
+    "url": "https://www.last.fm/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Bandcamp": {
+    "url": "https://{}.bandcamp.com",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Mixcloud": {
+    "url": "https://www.mixcloud.com/{}/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Slideshare": {
+    "url": "https://www.slideshare.net/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "professional"
+  },
+  "Academia.edu": {
+    "url": "https://independent.academia.edu/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "academic"
+  },
+  "ResearchGate": {
+    "url": "https://www.researchgate.net/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "academic"
+  },
+  "500px": {
+    "url": "https://500px.com/p/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "photo"
+  },
+  "Unsplash": {
+    "url": "https://unsplash.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "photo"
+  },
+  "VK": {
+    "url": "https://vk.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "OK.ru": {
+    "url": "https://ok.ru/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Xing": {
+    "url": "https://www.xing.com/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "professional"
+  },
+  "Ello": {
+    "url": "https://ello.co/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Mix": {
+    "url": "https://mix.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Disqus": {
+    "url": "https://disqus.com/by/{}/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Foursquare": {
+    "url": "https://foursquare.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Untappd": {
+    "url": "https://untappd.com/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "lifestyle"
+  },
+  "Strava": {
+    "url": "https://www.strava.com/athletes/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "fitness"
+  },
+  "Chess.com": {
+    "url": "https://www.chess.com/member/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Lichess": {
+    "url": "https://lichess.org/@/{}",
+    "url_probe": "https://lichess.org/api/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Kongregate": {
+    "url": "https://www.kongregate.com/accounts/{}",
+    "error_type": "status_code",
+    "error_code": 410,
+    "category": "gaming"
+  },
+  "HackerEarth": {
+    "url": "https://www.hackerearth.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "HackerRank": {
+    "url": "https://www.hackerrank.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Codeforces": {
+    "url": "https://codeforces.com/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "AtCoder": {
+    "url": "https://atcoder.jp/users/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "CodinGame": {
+    "url": "https://www.codingame.com/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Scratch": {
+    "url": "https://scratch.mit.edu/users/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "development"
+  },
+  "Roblox": {
+    "url": "https://www.roblox.com/user.aspx?username={}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "gaming"
+  },
+  "Imgur": {
+    "url": "https://imgur.com/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "photo"
+  },
+  "Giphy": {
+    "url": "https://giphy.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "media"
+  },
+  "Wattpad": {
+    "url": "https://www.wattpad.com/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Fanfiction": {
+    "url": "https://www.fanfiction.net/u/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Archive of Our Own": {
+    "url": "https://archiveofourown.org/users/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "writing"
+  },
+  "Ravelry": {
+    "url": "https://www.ravelry.com/people/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "hobby"
+  },
+  "MyAnimeList": {
+    "url": "https://myanimelist.net/profile/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "entertainment"
+  },
+  "AniList": {
+    "url": "https://anilist.co/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "entertainment"
+  },
+  "Furaffinity": {
+    "url": "https://www.furaffinity.net/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "art"
+  },
+  "Newgrounds": {
+    "url": "https://{}.newgrounds.com",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "art"
+  },
+  "CashApp": {
+    "url": "https://cash.app/${}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "finance"
+  },
+  "Venmo": {
+    "url": "https://account.venmo.com/u/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "finance"
+  },
+  "Coinbase": {
+    "url": "https://www.coinbase.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "finance"
+  }
+}

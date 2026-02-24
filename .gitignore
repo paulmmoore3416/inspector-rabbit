@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Sensitive data — NEVER commit these
+*.env
+.env.*
+*_settings.json
+secrets.json
+api_keys.json
+credentials*.json
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Inspector Rabbit specifics
+debian_pkg/
+*.deb
+inspector_rabbit_*.html
+inspector_rabbit_*.json
+inspector_rabbit_*.pdf
+inspector_rabbit_*.png
+~/.inspector_rabbit_settings.json
+~/.inspector_rabbit_timeline.json
+
+# IDE / Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V4
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
