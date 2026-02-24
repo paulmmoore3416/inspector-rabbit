@@ -132,7 +132,7 @@ class Sidebar(QWidget):
         outer.addWidget(scroll, 1)
 
         # Version label
-        ver_label = QLabel("v1.0.0")
+        ver_label = QLabel("v1.1.0")
         ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver_label.setStyleSheet("color: #21262d; font-size: 10px; padding: 6px;")
         outer.addWidget(ver_label)
@@ -289,6 +289,9 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.sidebar.page_changed.connect(self.stack.setCurrentIndex)
 
+        # Dashboard navigation — cards and quick-action buttons
+        self.dashboard.navigate_to.connect(self.navigate_to)
+
         # send_to_graph wiring
         for page in [
             self.username_page, self.domain_page, self.email_page,
@@ -396,7 +399,7 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.0.0</p>
+        <p><b>Version:</b> 1.1.0</p>
         <p><b>Modules:</b> 14 OSINT capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>
