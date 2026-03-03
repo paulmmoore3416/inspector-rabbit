@@ -29,6 +29,7 @@ from ..modules.connection_guard import ConnectionGuard
 from ..modules.traffic_monitor import TrafficMonitor
 from ..modules.scan_detector import ScanDetector, ScanEvent
 from ..modules.dns_leak_monitor import DNSLeakMonitor
+from .components import apply_page_header_style
 
 
 SEV_COLOR = {
@@ -219,9 +220,7 @@ class CounterSurveillanceWidget(QWidget):
 
     def _build_topbar(self) -> QFrame:
         bar = QFrame()
-        bar.setStyleSheet(
-            "QFrame { background: #010409; border-bottom: 1px solid #21262d; }"
-        )
+        apply_page_header_style(bar, "#f85149")
         bar.setFixedHeight(64)
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(20, 10, 20, 10)

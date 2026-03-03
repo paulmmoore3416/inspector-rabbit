@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QColor
+from .components import apply_page_header_style
 
 
 TIMELINE_FILE = os.path.expanduser("~/.inspector_rabbit_timeline.json")
@@ -69,7 +70,7 @@ class TimelineWidget(QWidget):
 
         # Top bar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#818cf8")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

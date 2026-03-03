@@ -15,6 +15,7 @@ from PyQt6.QtGui import QFont, QColor, QDesktopServices, QClipboard
 
 from ..modules.username_checker import UsernameCheckerThread, load_sites, get_categories
 from ..modules.report_generator import generate_username_report, save_html_report, save_json_report
+from .components import apply_page_header_style
 
 
 STATUS_COLORS = {
@@ -71,12 +72,7 @@ class UsernameWidget(QWidget):
 
     def _build_topbar(self) -> QWidget:
         bar = QFrame()
-        bar.setStyleSheet("""
-            QFrame {
-                background: #010409;
-                border-bottom: 1px solid #21262d;
-            }
-        """)
+        apply_page_header_style(bar, "#00f5ff")
         bar.setFixedHeight(64)
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 12, 24, 12)

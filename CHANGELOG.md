@@ -7,6 +7,31 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.3.0] — 2026-03-02
+
+### Changed — Dashboard Redesign + Page Visual Identity
+
+- **Dashboard** — complete visual overhaul:
+  - `HeroBanner` — custom `paintEvent()` with dot-grid background (26px spacing, 22-alpha cyan), corner HUD brackets, top-right radial glow, and a gradient cyan border line along the bottom
+  - `StatCard` — redesigned with coloured left-stripe accent per stat (3px border-left in module colour), bold icon + value layout, uppercase muted label
+  - `FeatureCard` — redesigned with per-module top-border accent (3px border-top), icon+title header row, improved action button styling
+  - Section labels — now inline accented: 3px cyan block + uppercase muted text
+- **Per-module page headers** — all 14 OSINT module pages now have a distinct coloured accent:
+  - Each topbar uses `apply_page_header_style(bar, accent_color)` from the new `components.py`
+  - Dark horizontal gradient background (`#0e1824 → #060b14`) with a 4px left-border stripe and matching bottom border in the module's accent colour
+  - Username: cyan · Domain: purple · Email: green · Dorks: orange · IP: red · Phone: sky · Cert: amber · Metadata: orange · Pastes: pink · Crawler: blue · Graph: pink · Timeline: indigo · Counter Sur: danger-red · Settings: grey
+- **`src/gui/components.py`** (new) — `MODULE_ACCENTS` dict and `apply_page_header_style()` shared utility
+- **Global stylesheet** (`styles.py`) — refreshed across the board:
+  - Underline-style tabs (no box border, 2px bottom accent on selected)
+  - Slimmer scrollbars (6px, transparent track)
+  - Darker card backgrounds (`#0d1117`) for better contrast
+  - Tighter table alternating rows, darker headers
+  - Improved button hover/press states
+  - Sidebar: dimmer inactive icons, thinner active stripe
+- Version bumped to 1.3.0 throughout
+
+---
+
 ## [1.2.0] — 2026-02-24
 
 ### Added — Counter Surveillance Suite

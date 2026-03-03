@@ -134,7 +134,7 @@ class Sidebar(QWidget):
         outer.addWidget(scroll, 1)
 
         # Version label
-        ver_label = QLabel("v1.2.0")
+        ver_label = QLabel("v1.3.0")
         ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver_label.setStyleSheet("color: #21262d; font-size: 10px; padding: 6px;")
         outer.addWidget(ver_label)
@@ -411,7 +411,7 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.2.0</p>
+        <p><b>Version:</b> 1.3.0</p>
         <p><b>Modules:</b> 15 OSINT + 4 Counter-Surveillance capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>

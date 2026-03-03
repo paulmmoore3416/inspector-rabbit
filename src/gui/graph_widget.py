@@ -21,6 +21,7 @@ from PyQt6.QtGui import (
     QFont, QColor, QPen, QBrush, QPainter, QTransform,
     QLinearGradient, QRadialGradient, QPixmap, QKeySequence
 )
+from .components import apply_page_header_style
 
 
 NODE_COLORS = {
@@ -451,7 +452,7 @@ class GraphWidget(QWidget):
 
         # Topbar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#f472b6")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

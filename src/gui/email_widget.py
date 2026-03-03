@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 
 from ..modules.email_osint import EmailOsintThread, EmailPatternThread
+from .components import apply_page_header_style
 
 
 def _status_badge(text: str, good: bool) -> str:
@@ -39,7 +40,7 @@ class EmailWidget(QWidget):
 
         # Topbar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#34d399")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

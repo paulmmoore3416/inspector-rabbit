@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 
 from ..modules.ip_intel import IpIntelThread
+from .components import apply_page_header_style
 
 
 class IpWidget(QWidget):
@@ -31,7 +32,7 @@ class IpWidget(QWidget):
         layout.setSpacing(0)
 
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#f87171")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

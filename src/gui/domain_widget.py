@@ -13,6 +13,7 @@ from PyQt6.QtGui import QFont, QColor, QDesktopServices
 
 from ..modules.domain_intel import DomainIntelThread
 from ..modules.report_generator import generate_domain_report, save_html_report, save_json_report
+from .components import apply_page_header_style
 
 
 class DomainWidget(QWidget):
@@ -51,7 +52,7 @@ class DomainWidget(QWidget):
 
     def _build_topbar(self) -> QFrame:
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#a78bfa")
         bar.setFixedHeight(64)
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(24, 12, 24, 12)

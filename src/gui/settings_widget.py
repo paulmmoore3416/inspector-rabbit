@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
+from .components import apply_page_header_style
 
 
 SETTINGS_FILE = os.path.expanduser("~/.inspector_rabbit_settings.json")
@@ -132,7 +133,7 @@ class SettingsWidget(QWidget):
 
         # Topbar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#8b949e")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

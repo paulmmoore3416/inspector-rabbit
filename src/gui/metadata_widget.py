@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QThread, pyqtSlot
 from PyQt6.QtGui import QFont, QColor
 
 from ..modules.metadata_extractor import fetch_and_extract
+from .components import apply_page_header_style
 
 
 class MetadataFetchThread(QThread):
@@ -46,7 +47,7 @@ class MetadataWidget(QWidget):
 
         # Top bar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#fb923c")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

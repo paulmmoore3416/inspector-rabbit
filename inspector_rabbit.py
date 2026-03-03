@@ -32,7 +32,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName("Inspector Rabbit")
-    app.setApplicationVersion("1.2.0")
+    app.setApplicationVersion("1.3.0")
     app.setOrganizationName("InspectorRabbit")
     app.setStyle("Fusion")
 
@@ -246,7 +246,7 @@ class AnimatedSplash:
         p.setFont(QFont("Ubuntu", 8))
         p.setPen(QColor(0x21, 0x26, 0x2d))
         p.drawText(QRectF(0, self.H - 20, self.W, 16), Qt.AlignmentFlag.AlignCenter,
-                   "v1.2.0  ·  Educational Use Only  ·  github.com/paulmmoore3416/inspector-rabbit")
+                   "v1.3.0  ·  Educational Use Only  ·  github.com/paulmmoore3416/inspector-rabbit")
 
         p.end()
 

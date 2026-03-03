@@ -13,6 +13,7 @@ from PyQt6.QtGui import QFont, QColor
 import webbrowser
 
 from ..modules.paste_scanner import PasteScannerThread
+from .components import apply_page_header_style
 
 
 RISK_COLORS = {
@@ -47,7 +48,7 @@ class PasteWidget(QWidget):
 
         # Top bar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#f472b6")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)

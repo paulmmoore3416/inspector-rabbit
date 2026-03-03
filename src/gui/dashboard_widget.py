@@ -1,63 +1,216 @@
 """
-Inspector Rabbit - Dashboard Widget
-Home screen with stats, quick actions, and feature navigation
+Inspector Rabbit - Dashboard Widget  v1.3.0
+Redesigned home screen with custom-painted hero, accented stat cards,
+per-module feature cards, and quick-action bar.
 """
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QGridLayout, QScrollArea, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import (
+    QFont, QPainter, QColor, QBrush, QPen, QLinearGradient, QRadialGradient
+)
 
+
+# ── Hero Banner ────────────────────────────────────────────────────────────────
+
+class HeroBanner(QFrame):
+    """
+    Custom-painted hero frame. Draws a deep-space gradient with a dot-grid
+    overlay, radial cyan glow, corner HUD brackets, and a gradient border line
+    along the bottom — all behind whatever child layout is placed inside.
+    """
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(170)
+        self._build_content()
+
+    def _build_content(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(40, 28, 32, 28)
+        layout.setSpacing(24)
+
+        # — Text column —
+        text_col = QVBoxLayout()
+        text_col.setSpacing(8)
+
+        title = QLabel("🐇  Inspector Rabbit")
+        title.setFont(QFont("Ubuntu", 30, QFont.Weight.Black))
+        title.setStyleSheet("color: #00f5ff; border: none; background: transparent;")
+        text_col.addWidget(title)
+
+        subtitle = QLabel(
+            "Advanced Open Source Intelligence Suite  ·  v1.3.0  ·  15 Modules"
+        )
+        subtitle.setFont(QFont("Ubuntu", 12))
+        subtitle.setStyleSheet(
+            "color: #6e7681; border: none; background: transparent;"
+        )
+        text_col.addWidget(subtitle)
+
+        tags_row = QHBoxLayout()
+        tags_row.setSpacing(6)
+        tags_row.setContentsMargins(0, 0, 0, 0)
+        for text, color in [
+            ("OSINT",          "#00f5ff"),
+            ("PASSIVE RECON",  "#a78bfa"),
+            ("COUNTER-SURV",   "#f85149"),
+            ("OPEN SOURCE",    "#3fb950"),
+        ]:
+            badge = QLabel(text)
+            badge.setStyleSheet(f"""
+                color: {color};
+                background: {color}18;
+                border: 1px solid {color}44;
+                border-radius: 6px;
+                padding: 2px 10px;
+                font-size: 10px;
+                font-weight: 700;
+                letter-spacing: 0.5px;
+            """)
+            tags_row.addWidget(badge)
+        tags_row.addStretch()
+        text_col.addLayout(tags_row)
+
+        layout.addLayout(text_col, 1)
+
+        # — Rabbit emoji —
+        rabbit = QLabel("🐇")
+        rabbit.setFont(QFont("Ubuntu", 78))
+        rabbit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rabbit.setStyleSheet("border: none; background: transparent;")
+        layout.addWidget(rabbit)
+
+    # ── Custom painting ────────────────────────────────────────────────────────
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        w, h = self.width(), self.height()
+
+        # 1. Deep gradient background
+        bg = QLinearGradient(0, 0, w, h)
+        bg.setColorAt(0.0, QColor(0x05, 0x09, 0x14))
+        bg.setColorAt(0.45, QColor(0x0a, 0x0e, 0x1c))
+        bg.setColorAt(1.0, QColor(0x06, 0x0a, 0x14))
+        painter.fillRect(self.rect(), QBrush(bg))
+
+        # 2. Dot grid (cyan, very faint)
+        painter.setPen(QPen(QColor(0, 245, 255, 22), 1.2))
+        spacing = 26
+        for x in range(0, w + spacing, spacing):
+            for y in range(0, h + spacing, spacing):
+                painter.drawPoint(x, y)
+
+        # 3. Radial glow — top-right quadrant
+        glow = QRadialGradient(w * 0.82, h * 0.05, w * 0.55)
+        glow.setColorAt(0.0, QColor(0, 245, 255, 38))
+        glow.setColorAt(0.45, QColor(0, 245, 255, 10))
+        glow.setColorAt(1.0, QColor(0, 245, 255, 0))
+        painter.setBrush(QBrush(glow))
+        painter.setPen(Qt.PenStyle.NoPen)
+        r = int(w * 0.55)
+        painter.drawEllipse(int(w * 0.82) - r, int(h * 0.05) - r, r * 2, r * 2)
+
+        # 4. Corner HUD brackets
+        pen = QPen(QColor(0, 245, 255, 70), 1.5)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        m, s = 14, 24   # margin, arm length
+        corners = [
+            (m,     m,     1,  1),
+            (w - m, m,    -1,  1),
+            (m,     h - m, 1, -1),
+            (w - m, h - m,-1, -1),
+        ]
+        for px, py, dx, dy in corners:
+            painter.drawLine(px, py, px + dx * s, py)
+            painter.drawLine(px, py, px, py + dy * s)
+
+        # 5. Bottom border — cyan gradient line
+        border = QLinearGradient(0, 0, w, 0)
+        border.setColorAt(0.0, QColor(0, 245, 255, 0))
+        border.setColorAt(0.2, QColor(0, 245, 255, 110))
+        border.setColorAt(0.8, QColor(0, 245, 255, 110))
+        border.setColorAt(1.0, QColor(0, 245, 255, 0))
+        painter.setBrush(QBrush(border))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(0, h - 1, w, 1)
+
+        painter.end()
+        super().paintEvent(event)
+
+
+# ── Stat Card ─────────────────────────────────────────────────────────────────
 
 class StatCard(QFrame):
+    """Stat card with a coloured left-stripe accent and large value label."""
+
     def __init__(self, value: str, label: str, color: str = "#00f5ff",
                  icon: str = "", parent=None):
         super().__init__(parent)
-        self.setObjectName("card")
-        self.setFixedHeight(110)
+        self.setObjectName("statCard")
+        self.setFixedHeight(118)
         self.setStyleSheet(f"""
-            QFrame#card {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #161b22, stop:1 #0d1117);
+            QFrame#statCard {{
+                background: #0d1117;
                 border: 1px solid #21262d;
-                border-radius: 12px;
+                border-left: 3px solid {color};
+                border-radius: 10px;
             }}
-            QFrame#card:hover {{
+            QFrame#statCard:hover {{
+                background: #111820;
                 border: 1px solid {color}44;
+                border-left: 3px solid {color};
             }}
         """)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(6)
 
-        top_row = QHBoxLayout()
-        icon_label = QLabel(icon)
-        icon_label.setFont(QFont("Ubuntu", 22))
-        icon_label.setStyleSheet("border: none; background: transparent;")
-        top_row.addWidget(icon_label)
-        top_row.addStretch()
-        layout.addLayout(top_row)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(2)
+
+        top = QHBoxLayout()
+        icon_lbl = QLabel(icon)
+        icon_lbl.setFont(QFont("Ubuntu", 20))
+        icon_lbl.setStyleSheet(
+            f"color: {color}; border: none; background: transparent;"
+        )
+        top.addWidget(icon_lbl)
+        top.addStretch()
 
         self.val_label = QLabel(value)
         self.val_label.setFont(QFont("Ubuntu", 26, QFont.Weight.Bold))
-        self.val_label.setStyleSheet(f"color: {color}; border: none; background: transparent;")
-        layout.addWidget(self.val_label)
+        self.val_label.setStyleSheet(
+            f"color: {color}; border: none; background: transparent;"
+        )
+        top.addWidget(self.val_label)
+        layout.addLayout(top)
 
-        lbl_label = QLabel(label)
-        lbl_label.setFont(QFont("Ubuntu", 11))
-        lbl_label.setStyleSheet("color: #8b949e; border: none; background: transparent;")
-        layout.addWidget(lbl_label)
+        layout.addStretch()
+
+        lbl = QLabel(label.upper())
+        lbl.setStyleSheet(
+            "color: #484f58; font-size: 10px; font-weight: 700; "
+            "letter-spacing: 1px; border: none; background: transparent;"
+        )
+        layout.addWidget(lbl)
 
     def set_value(self, v: str):
         self.val_label.setText(v)
 
 
-class FeatureCard(QFrame):
-    """Feature card that emits a navigation signal when the action button is clicked."""
+# ── Feature Card ───────────────────────────────────────────────────────────────
 
-    clicked = pyqtSignal(str)   # emits page_name
+class FeatureCard(QFrame):
+    """
+    Module feature card. Emits clicked(page_name) when the action button
+    is pressed or anywhere on the card is clicked.
+    """
+    clicked = pyqtSignal(str)
 
     def __init__(self, icon: str, title: str, description: str,
                  action_label: str, color: str, page_name: str, parent=None):
@@ -65,61 +218,71 @@ class FeatureCard(QFrame):
         self._page_name = page_name
         self.setObjectName("featureCard")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(195)
         self.setStyleSheet(f"""
             QFrame#featureCard {{
-                background: #161b22;
+                background: #0d1117;
                 border: 1px solid #21262d;
-                border-radius: 12px;
+                border-top: 3px solid {color}77;
+                border-radius: 10px;
             }}
             QFrame#featureCard:hover {{
-                border: 1px solid {color}55;
-                background: #1a1f2a;
+                background: #111820;
+                border: 1px solid {color}44;
+                border-top: 3px solid {color};
             }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(8)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(6)
+
+        # Icon + title row
+        header_row = QHBoxLayout()
+        header_row.setSpacing(10)
 
         icon_lbl = QLabel(icon)
-        icon_lbl.setFont(QFont("Ubuntu", 26))
+        icon_lbl.setFont(QFont("Ubuntu", 24))
         icon_lbl.setStyleSheet("border: none; background: transparent;")
-        layout.addWidget(icon_lbl)
+        header_row.addWidget(icon_lbl)
 
         title_lbl = QLabel(title)
         title_lbl.setFont(QFont("Ubuntu", 13, QFont.Weight.Bold))
-        title_lbl.setStyleSheet(f"color: {color}; border: none; background: transparent;")
-        layout.addWidget(title_lbl)
+        title_lbl.setStyleSheet(
+            f"color: {color}; border: none; background: transparent;"
+        )
+        header_row.addWidget(title_lbl, 1)
+        layout.addLayout(header_row)
 
         desc_lbl = QLabel(description)
         desc_lbl.setWordWrap(True)
         desc_lbl.setStyleSheet(
-            "color: #8b949e; font-size: 11px; border: none; background: transparent;"
+            "color: #6e7681; font-size: 11px; "
+            "border: none; background: transparent; line-height: 1.4;"
         )
         layout.addWidget(desc_lbl)
 
         layout.addStretch()
 
         self.action_btn = QPushButton(action_label)
-        self.action_btn.setFixedHeight(32)
+        self.action_btn.setFixedHeight(30)
         self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.action_btn.setStyleSheet(f"""
             QPushButton {{
-                background: {color}18;
-                border: 1px solid {color}44;
+                background: {color}16;
+                border: 1px solid {color}40;
                 color: {color};
-                border-radius: 8px;
-                padding: 4px 12px;
+                border-radius: 7px;
+                padding: 3px 12px;
                 font-weight: 600;
                 font-size: 11px;
             }}
             QPushButton:hover {{
-                background: {color}30;
-                border: 1px solid {color};
+                background: {color}2c;
+                border: 1px solid {color}88;
             }}
             QPushButton:pressed {{
-                background: {color}44;
+                background: {color}40;
             }}
         """)
         self.action_btn.clicked.connect(self._on_click)
@@ -129,10 +292,36 @@ class FeatureCard(QFrame):
         self.clicked.emit(self._page_name)
 
     def mousePressEvent(self, event):
-        """Clicking anywhere on the card also navigates."""
         self.clicked.emit(self._page_name)
         super().mousePressEvent(event)
 
+
+# ── Section Divider ────────────────────────────────────────────────────────────
+
+def _section_label(text: str) -> QWidget:
+    """Styled section divider label."""
+    row = QWidget()
+    row.setStyleSheet("background: transparent;")
+    h = QHBoxLayout(row)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(10)
+
+    accent = QFrame()
+    accent.setFixedSize(3, 14)
+    accent.setStyleSheet("background: #00f5ff; border-radius: 1px;")
+    h.addWidget(accent)
+
+    lbl = QLabel(text)
+    lbl.setStyleSheet(
+        "color: #484f58; font-size: 10px; font-weight: 700; "
+        "letter-spacing: 1.5px; background: transparent;"
+    )
+    h.addWidget(lbl)
+    h.addStretch()
+    return row
+
+
+# ── Dashboard Widget ───────────────────────────────────────────────────────────
 
 class DashboardWidget(QWidget):
     """Dashboard home screen. Emits navigate_to(page_name) when a card is activated."""
@@ -152,25 +341,23 @@ class DashboardWidget(QWidget):
         content = QWidget()
         scroll.setWidget(content)
 
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.addWidget(scroll)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(scroll)
 
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(28)
+        layout.setContentsMargins(28, 28, 28, 28)
+        layout.setSpacing(24)
 
-        # ── Header ───────────────────────────────────────────────────────────
-        layout.addWidget(self._build_header())
+        # ── Hero banner ────────────────────────────────────────────────────────
+        layout.addWidget(HeroBanner())
 
-        # ── Stats row ─────────────────────────────────────────────────────────
-        stats_label = QLabel("CAPABILITIES")
-        stats_label.setFont(QFont("Ubuntu", 10, QFont.Weight.Bold))
-        stats_label.setStyleSheet("color: #484f58; letter-spacing: 2px; font-size: 10px;")
-        layout.addWidget(stats_label)
+        # ── Stat strip ────────────────────────────────────────────────────────
+        layout.addWidget(_section_label("CAPABILITIES"))
 
         stats_grid = QGridLayout()
-        stats_grid.setSpacing(14)
+        stats_grid.setSpacing(12)
+        stats_grid.setContentsMargins(0, 0, 0, 0)
 
         stat_data = [
             ("100+",  "Sites Checked",      "#00f5ff", "🌐"),
@@ -182,20 +369,15 @@ class DashboardWidget(QWidget):
         ]
         for i, (val, lbl, col, ico) in enumerate(stat_data):
             stats_grid.addWidget(StatCard(val, lbl, col, ico), i // 3, i % 3)
-
         layout.addLayout(stats_grid)
 
         # ── Feature cards ─────────────────────────────────────────────────────
-        feat_label = QLabel("MODULES — click any card to open")
-        feat_label.setStyleSheet(
-            "color: #484f58; letter-spacing: 2px; font-size: 10px; font-weight: 700;"
-        )
-        layout.addWidget(feat_label)
+        layout.addWidget(_section_label("MODULES — click any card to open"))
 
         feat_grid = QGridLayout()
-        feat_grid.setSpacing(14)
+        feat_grid.setSpacing(12)
+        feat_grid.setContentsMargins(0, 0, 0, 0)
 
-        # (icon, title, description, button_label, color, page_name)
         features = [
             ("👤", "Username Hunt",
              "Async search across 100+ social platforms simultaneously.",
@@ -247,7 +429,7 @@ class DashboardWidget(QWidget):
 
             ("🛡️", "Counter Surveillance",
              "Connection Guard · Traffic Monitor · Scan Detector · DNS Leak — "
-             "watch who's watching you with live metrics & kill-switch.",
+             "watch who's watching you.",
              "Open Monitor →", "#f85149", "countersur"),
         ]
 
@@ -258,49 +440,49 @@ class DashboardWidget(QWidget):
 
         layout.addLayout(feat_grid)
 
-        # ── Quick actions bar ─────────────────────────────────────────────────
-        qa_label = QLabel("QUICK ACTIONS")
-        qa_label.setStyleSheet(
-            "color: #484f58; letter-spacing: 2px; font-size: 10px; font-weight: 700;"
-        )
-        layout.addWidget(qa_label)
+        # ── Quick actions ─────────────────────────────────────────────────────
+        layout.addWidget(_section_label("QUICK ACTIONS"))
 
         qa_frame = QFrame()
-        qa_frame.setStyleSheet(
-            "QFrame { background: #161b22; border: 1px solid #21262d; border-radius: 12px; }"
-        )
+        qa_frame.setStyleSheet("""
+            QFrame {
+                background: #0d1117;
+                border: 1px solid #21262d;
+                border-radius: 10px;
+            }
+        """)
         qa_layout = QHBoxLayout(qa_frame)
-        qa_layout.setContentsMargins(20, 14, 20, 14)
-        qa_layout.setSpacing(12)
+        qa_layout.setContentsMargins(18, 12, 18, 12)
+        qa_layout.setSpacing(10)
 
         quick_actions = [
-            ("🔎 New Username Search",  "username",  "#00f5ff"),
-            ("🌐 Analyze Domain",        "domain",    "#a78bfa"),
-            ("🖥️ IP Lookup",             "ip",        "#f87171"),
-            ("📋 Scan for Leaks",        "pastes",    "#f472b6"),
-            ("🕸️ Open Graph",            "graph",     "#f472b6"),
-            ("📅 View Timeline",         "timeline",  "#818cf8"),
+            ("🔎  Username Search",  "username",  "#00f5ff"),
+            ("🌐  Analyze Domain",   "domain",    "#a78bfa"),
+            ("🖥️  IP Lookup",        "ip",        "#f87171"),
+            ("📋  Scan for Leaks",   "pastes",    "#f472b6"),
+            ("🕸️  Open Graph",       "graph",     "#f472b6"),
+            ("📅  View Timeline",    "timeline",  "#818cf8"),
         ]
         for label, page, color in quick_actions:
             btn = QPushButton(label)
-            btn.setFixedHeight(36)
+            btn.setFixedHeight(34)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background: {color}14;
-                    border: 1px solid {color}33;
+                    background: {color}12;
+                    border: 1px solid {color}30;
                     color: {color};
                     border-radius: 8px;
-                    padding: 6px 14px;
+                    padding: 5px 14px;
                     font-size: 11px;
                     font-weight: 600;
                 }}
                 QPushButton:hover {{
-                    background: {color}28;
-                    border: 1px solid {color}88;
+                    background: {color}24;
+                    border: 1px solid {color}77;
                 }}
                 QPushButton:pressed {{
-                    background: {color}3c;
+                    background: {color}38;
                 }}
             """)
             btn.clicked.connect(lambda _checked, p=page: self.navigate_to.emit(p))
@@ -312,13 +494,14 @@ class DashboardWidget(QWidget):
         disc_frame = QFrame()
         disc_frame.setStyleSheet("""
             QFrame {
-                background: #1c1208;
-                border: 1px solid #e3b34133;
-                border-radius: 12px;
+                background: #120c04;
+                border: 1px solid #e3b34130;
+                border-radius: 10px;
             }
         """)
         disc_layout = QHBoxLayout(disc_frame)
-        disc_layout.setContentsMargins(20, 14, 20, 14)
+        disc_layout.setContentsMargins(18, 12, 18, 12)
+        disc_layout.setSpacing(14)
 
         warn_icon = QLabel("⚠️")
         warn_icon.setFont(QFont("Ubuntu", 18))
@@ -327,7 +510,7 @@ class DashboardWidget(QWidget):
 
         disc_text = QLabel(
             "<b style='color:#e3b341;'>Educational &amp; Authorized Use Only</b><br>"
-            "<span style='color:#8b949e; font-size:12px;'>"
+            "<span style='color:#6e7681; font-size:12px;'>"
             "Inspector Rabbit is designed for security research, CTF competitions, "
             "and authorized penetration testing. Only investigate targets you have "
             "explicit permission to examine. Unauthorized OSINT may violate privacy "
@@ -340,58 +523,3 @@ class DashboardWidget(QWidget):
 
         layout.addWidget(disc_frame)
         layout.addStretch()
-
-    def _build_header(self) -> QWidget:
-        header = QFrame()
-        header.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 #0f172a, stop:0.5 #1e1b4b, stop:1 #0f172a);
-                border: 1px solid #2d2f6b;
-                border-radius: 16px;
-            }
-        """)
-        header.setFixedHeight(140)
-
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(20)
-
-        text_layout = QVBoxLayout()
-        text_layout.setSpacing(6)
-
-        title = QLabel("🐇 Inspector Rabbit")
-        title.setFont(QFont("Ubuntu", 28, QFont.Weight.Black))
-        title.setStyleSheet("color: #00f5ff; border: none; background: transparent;")
-        text_layout.addWidget(title)
-
-        subtitle = QLabel("Advanced Open Source Intelligence Suite  ·  v1.2.0  ·  15 Modules + Counter Surveillance")
-        subtitle.setFont(QFont("Ubuntu", 12))
-        subtitle.setStyleSheet("color: #8b949e; border: none; background: transparent;")
-        text_layout.addWidget(subtitle)
-
-        tags_layout = QHBoxLayout()
-        tags_layout.setSpacing(8)
-        for tag in ["Sherlock", "Maltego", "SpiderFoot", "Shodan", "Recon-ng", "Dorks", "Cert CT", "Timeline"]:
-            tag_lbl = QLabel(tag)
-            tag_lbl.setStyleSheet("""
-                color: #8b949e;
-                background: #21262d;
-                border: 1px solid #30363d;
-                border-radius: 8px;
-                padding: 3px 10px;
-                font-size: 10px;
-            """)
-            tags_layout.addWidget(tag_lbl)
-        tags_layout.addStretch()
-        text_layout.addLayout(tags_layout)
-
-        layout.addLayout(text_layout, 1)
-
-        rabbit = QLabel("🐇")
-        rabbit.setFont(QFont("Ubuntu", 64))
-        rabbit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        rabbit.setStyleSheet("border: none; background: transparent;")
-        layout.addWidget(rabbit)
-
-        return header

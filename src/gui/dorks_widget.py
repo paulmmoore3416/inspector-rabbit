@@ -18,6 +18,7 @@ from ..modules.dorks_engine import (
     load_dork_templates, build_dork_query, DorkWorker,
     generate_dork_queries, get_google_url
 )
+from .components import apply_page_header_style
 
 
 class DorksWidget(QWidget):
@@ -37,7 +38,7 @@ class DorksWidget(QWidget):
 
         # Topbar
         bar = QFrame()
-        bar.setStyleSheet("QFrame { background: #010409; border-bottom: 1px solid #21262d; }")
+        apply_page_header_style(bar, "#fb923c")
         bar.setFixedHeight(64)
         bl = QHBoxLayout(bar)
         bl.setContentsMargins(24, 12, 24, 12)
