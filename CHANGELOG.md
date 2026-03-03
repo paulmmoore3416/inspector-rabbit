@@ -7,6 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.2.0] — 2026-02-24
+
+### Added — Counter Surveillance Suite
+
+- **Counter Surveillance Monitor** — new 🛡️ split-screen page with 4 defensive modules:
+  - **Connection Guard** (`connection_guard.py`) — real-time TCP/UDP monitoring via psutil, inbound probe detection, port-scan heuristics (3+ ports in 8s = scan), suspicious outbound port alerts, one-click kill-switch using `ss -K` with process-level fallback
+  - **Traffic Monitor** (`traffic_monitor.py`) — 1Hz psutil I/O sampling, rolling 120-sample history, spike anomaly detection (4× baseline = alert), tracks bytes/packets in+out per second
+  - **Scan Detector** (`scan_detector.py`) — detects if external hosts are port-scanning or flooding the local machine; classifies sequential_scan, port_scan, host_probe, syn_flood by connection-state analysis
+  - **DNS Leak Monitor** (`dns_leak_monitor.py`) — watches `/etc/resolv.conf` for tampering, validates canary domains against expected IPs, flags slow DNS responses (>2s = proxy suspected), alerts on unknown resolvers
+- **Split-screen GUI** — left: terminal-style green-on-black scan activity log; right: tabbed threat panel (Threats · Connections · Scanners · DNS Checks); bottom: live matplotlib graphs for traffic I/O and scan attempts
+- **Real-time metrics graphs** — embedded matplotlib: traffic bytes/sec with fill + scan attempt count history
+- **⚡ Kill Connection button** — select any connection row and kill it; confirmation dialog prevents accidents
+- All OSINT module activity auto-relayed to Counter Surveillance terminal via `status_message` signals
+- Dashboard card added for Counter Surveillance with navigation
+- Version bumped to 1.2.0 throughout
+
+### Changed
+
+- `requirements.txt` — added `psutil>=5.9.0`
+- Stat card updated: 14 → 15+ OSINT modules
+- Dashboard subtitle reflects new module count
+
+---
+
 ## [1.1.0] — 2026-02-24
 
 ### Fixed

@@ -28,6 +28,7 @@ from .cert_widget import CertWidget
 from .metadata_widget import MetadataWidget
 from .paste_widget import PasteWidget
 from .timeline_widget import TimelineWidget
+from .counter_surveillance_widget import CounterSurveillanceWidget
 
 
 NAV_ITEMS = [
@@ -44,6 +45,7 @@ NAV_ITEMS = [
     ("🕷️",  "Crawler",    "crawler"),
     ("🕸️",  "Graph",      "graph"),
     ("📅", "Timeline",    "timeline"),
+    ("🛡️",  "Counter Sur","countersur"),
     ("⚙️",  "Settings",   "settings"),
 ]
 
@@ -132,7 +134,7 @@ class Sidebar(QWidget):
         outer.addWidget(scroll, 1)
 
         # Version label
-        ver_label = QLabel("v1.1.0")
+        ver_label = QLabel("v1.2.0")
         ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver_label.setStyleSheet("color: #21262d; font-size: 10px; padding: 6px;")
         outer.addWidget(ver_label)
@@ -181,20 +183,21 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.stack, 1)
 
         # Pages (order must match NAV_ITEMS)
-        self.dashboard      = DashboardWidget()
-        self.username_page  = UsernameWidget()
-        self.domain_page    = DomainWidget()
-        self.email_page     = EmailWidget()
-        self.dorks_page     = DorksWidget()
-        self.ip_page        = IpWidget()
-        self.phone_page     = PhoneWidget()
-        self.cert_page      = CertWidget()
-        self.metadata_page  = MetadataWidget()
-        self.paste_page     = PasteWidget()
-        self.crawler_page   = CrawlerWidget()
-        self.graph_page     = GraphWidget()
-        self.timeline_page  = TimelineWidget()
-        self.settings_page  = SettingsWidget()
+        self.dashboard        = DashboardWidget()
+        self.username_page    = UsernameWidget()
+        self.domain_page      = DomainWidget()
+        self.email_page       = EmailWidget()
+        self.dorks_page       = DorksWidget()
+        self.ip_page          = IpWidget()
+        self.phone_page       = PhoneWidget()
+        self.cert_page        = CertWidget()
+        self.metadata_page    = MetadataWidget()
+        self.paste_page       = PasteWidget()
+        self.crawler_page     = CrawlerWidget()
+        self.graph_page       = GraphWidget()
+        self.timeline_page    = TimelineWidget()
+        self.countersur_page  = CounterSurveillanceWidget()
+        self.settings_page    = SettingsWidget()
 
         for page in [
             self.dashboard, self.username_page, self.domain_page,
@@ -202,7 +205,8 @@ class MainWindow(QMainWindow):
             self.ip_page, self.phone_page, self.cert_page,
             self.metadata_page, self.paste_page,
             self.crawler_page, self.graph_page,
-            self.timeline_page, self.settings_page,
+            self.timeline_page, self.countersur_page,
+            self.settings_page,
         ]:
             self.stack.addWidget(page)
 
@@ -300,55 +304,63 @@ class MainWindow(QMainWindow):
             if hasattr(page, 'send_to_graph'):
                 page.send_to_graph.connect(self._add_to_graph)
 
-        # status_message wiring
-        for page in [
-            self.username_page, self.domain_page, self.email_page,
-            self.dorks_page, self.crawler_page,
-            self.ip_page, self.phone_page, self.cert_page,
-            self.metadata_page, self.paste_page, self.timeline_page,
-        ]:
+        # status_message wiring — statusbar + counter surveillance terminal
+        osint_pages = [
+            ('username', self.username_page),
+            ('domain',   self.domain_page),
+            ('email',    self.email_page),
+            ('dorks',    self.dorks_page),
+            ('crawler',  self.crawler_page),
+            ('ip',       self.ip_page),
+            ('phone',    self.phone_page),
+            ('cert',     self.cert_page),
+            ('metadata', self.metadata_page),
+            ('pastes',   self.paste_page),
+            ('timeline', self.timeline_page),
+        ]
+        for mod_name, page in osint_pages:
             if hasattr(page, 'status_message'):
                 page.status_message.connect(self._set_status)
+                # Relay scan activity into the Counter Surveillance terminal
+                page.status_message.connect(
+                    lambda m, mn=mod_name, pg=page: self._relay_to_countersur(mn, pg, m)
+                )
+
+        self.countersur_page.status_message.connect(self._set_status)
 
         # Timeline auto-capture from OSINT pages
-        self.username_page.status_message.connect(
-            lambda m: self._log_to_timeline('username', self.username_page, m))
-        self.domain_page.status_message.connect(
-            lambda m: self._log_to_timeline('domain', self.domain_page, m))
-        self.email_page.status_message.connect(
-            lambda m: self._log_to_timeline('email', self.email_page, m))
-        self.ip_page.status_message.connect(
-            lambda m: self._log_to_timeline('ip', self.ip_page, m))
-        self.phone_page.status_message.connect(
-            lambda m: self._log_to_timeline('phone', self.phone_page, m))
-        self.cert_page.status_message.connect(
-            lambda m: self._log_to_timeline('cert', self.cert_page, m))
-        self.metadata_page.status_message.connect(
-            lambda m: self._log_to_timeline('metadata', self.metadata_page, m))
-        self.paste_page.status_message.connect(
-            lambda m: self._log_to_timeline('paste', self.paste_page, m))
-        self.dorks_page.status_message.connect(
-            lambda m: self._log_to_timeline('dork', self.dorks_page, m))
-        self.crawler_page.status_message.connect(
-            lambda m: self._log_to_timeline('crawler', self.crawler_page, m))
+        for mod_name, page in osint_pages:
+            if hasattr(page, 'status_message'):
+                page.status_message.connect(
+                    lambda m, mn=mod_name, pg=page: self._log_to_timeline(mn, pg, m)
+                )
 
         # Settings
         self.settings_page.settings_changed.connect(self._apply_settings)
 
+    def _relay_to_countersur(self, mod_name: str, page, message: str):
+        """Relay OSINT module activity to the Counter Surveillance terminal."""
+        if not message or message.startswith('🐇 Inspector Rabbit'):
+            return
+        target = self._extract_target(page)
+        self.countersur_page.log_scan_event(mod_name, target or '—', message)
+
     def _log_to_timeline(self, ev_type: str, page, message: str):
         """Auto-capture status messages as timeline events."""
-        # Extract target from the page if possible
-        target = ''
+        target = self._extract_target(page)
+        if message and not message.startswith('🐇 Inspector Rabbit'):
+            self.timeline_page.add_event(ev_type, target or '—', message)
+
+    @staticmethod
+    def _extract_target(page) -> str:
         for attr in ('ip_input', 'domain_input', 'email_input', 'query_input',
                      'url_input', 'phone_input', 'username_input'):
             widget = getattr(page, attr, None)
             if widget and hasattr(widget, 'text'):
                 val = widget.text().strip()
                 if val:
-                    target = val
-                    break
-        if message and not message.startswith('🐇 Inspector Rabbit'):
-            self.timeline_page.add_event(ev_type, target or '—', message)
+                    return val
+        return ''
 
     def _navigate(self, idx: int):
         self.stack.setCurrentIndex(idx)
@@ -399,8 +411,8 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.1.0</p>
-        <p><b>Modules:</b> 14 OSINT capabilities</p>
+        <p><b>Version:</b> 1.2.0</p>
+        <p><b>Modules:</b> 15 OSINT + 4 Counter-Surveillance capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>
         <p style='color:#f85149; font-size:11px;'>

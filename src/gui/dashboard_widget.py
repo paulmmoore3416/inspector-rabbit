@@ -174,7 +174,7 @@ class DashboardWidget(QWidget):
 
         stat_data = [
             ("100+",  "Sites Checked",      "#00f5ff", "🌐"),
-            ("14",    "OSINT Modules",       "#a78bfa", "🔧"),
+            ("15+",   "OSINT Modules",       "#a78bfa", "🔧"),
             ("8",     "DNS Record Types",    "#34d399", "📡"),
             ("60+",   "Dork Templates",      "#fb923c", "🔍"),
             ("3",     "Export Formats",      "#60a5fa", "📄"),
@@ -244,6 +244,11 @@ class DashboardWidget(QWidget):
             ("📅", "Investigation Timeline",
              "Chronological event log — auto-captures all scan findings.",
              "View Timeline →", "#818cf8", "timeline"),
+
+            ("🛡️", "Counter Surveillance",
+             "Connection Guard · Traffic Monitor · Scan Detector · DNS Leak — "
+             "watch who's watching you with live metrics & kill-switch.",
+             "Open Monitor →", "#f85149", "countersur"),
         ]
 
         for i, (icon, title, desc, action, color, page) in enumerate(features):
@@ -360,7 +365,7 @@ class DashboardWidget(QWidget):
         title.setStyleSheet("color: #00f5ff; border: none; background: transparent;")
         text_layout.addWidget(title)
 
-        subtitle = QLabel("Advanced Open Source Intelligence Suite  ·  v1.1.0  ·  14 Modules")
+        subtitle = QLabel("Advanced Open Source Intelligence Suite  ·  v1.2.0  ·  15 Modules + Counter Surveillance")
         subtitle.setFont(QFont("Ubuntu", 12))
         subtitle.setStyleSheet("color: #8b949e; border: none; background: transparent;")
         text_layout.addWidget(subtitle)
