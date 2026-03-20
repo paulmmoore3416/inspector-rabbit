@@ -2,7 +2,7 @@ name: Build Windows EXE
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'release/**' ]
     tags:     [ 'v*' ]
   workflow_dispatch:          # allow manual trigger from GitHub UI
 
