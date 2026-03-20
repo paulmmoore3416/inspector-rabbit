@@ -1,0 +1,55 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+    tags:     [ 'v*' ]
+  workflow_dispatch:          # allow manual trigger from GitHub UI
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install PyQt6 PyQt6-Qt6
+          pip install requests aiohttp python-whois dnspython
+          pip install beautifulsoup4 lxml reportlab Pillow
+          pip install networkx matplotlib
+          pip install googlesearch-python colorama tqdm
+          pip install cryptography pyOpenSSL
+          pip install psutil urllib3
+          # socid-extractor can be flaky on Windows — install separately
+          pip install socid-extractor || echo "socid-extractor skipped"
+
+      - name: Build EXE with PyInstaller
+        run: |
+          pyinstaller inspector_rabbit.spec
+
+      - name: Verify build
+        run: |
+          dir dist\InspectorRabbit\
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InspectorRabbit-Windows-v1.5.0
+          path: dist\InspectorRabbit\
+          retention-days: 30
+
+      # On tagged releases, also attach to the GitHub Release
+      - name: Upload to Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist\InspectorRabbit\InspectorRabbit.exe
