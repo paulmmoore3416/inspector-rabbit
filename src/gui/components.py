@@ -51,9 +51,8 @@ def apply_page_header_style(frame: QFrame, accent_color: str) -> None:
     """
     frame.setStyleSheet(f"""
         QFrame {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #0e1824, stop:0.35 #0a0f1c, stop:1 #060b14);
-            border-bottom: 1px solid {accent_color}33;
-            border-left: 4px solid {accent_color};
+            background: #070b12;
+            border-bottom: 1px solid #1a2030;
+            border-left: 3px solid {accent_color};
         }}
     """)

@@ -41,42 +41,48 @@ from .case_widget import CaseWidget
 
 
 NAV_ITEMS = [
-    ("🏠", "Dashboard",   "dashboard"),
-    ("👤", "Username",    "username"),
-    ("🌐", "Domain",      "domain"),
-    ("✉️",  "Email",       "email"),
-    ("🔍", "Dorks",       "dorks"),
-    ("🖥️", "IP Intel",    "ip"),
-    ("📞", "Phone",       "phone"),
-    ("🔐", "Cert CT",     "cert"),
-    ("📄", "Metadata",    "metadata"),
-    ("📋", "Pastes",      "pastes"),
-    ("🕷️",  "Crawler",    "crawler"),
-    ("🕸️",  "Graph",      "graph"),
-    ("📅", "Timeline",    "timeline"),
-    ("🛡️",  "Counter Sur","countersur"),
-    ("🖼️", "Rev. Image",  "revimage"),
-    ("💀", "Breach Agg",  "breach"),
-    ("👥", "Social OSINT","social"),
-    ("🗺️", "Geo Map",     "geo"),
-    ("🌑", "Dark Web",    "darkweb"),
-    ("🔬", "Evidence",    "evidence"),
-    ("🔌", "Net Diag",    "netdiag"),
-    ("📦", "Batch",       "batch"),
-    ("📂", "Cases",       "cases"),
-    ("⚙️",  "Settings",   "settings"),
+    ("🏠", "Dashboard",    "dashboard"),
+    ("👤", "Username",     "username"),
+    ("🌐", "Domain",       "domain"),
+    ("✉️",  "Email",        "email"),
+    ("🔍", "Dorks",        "dorks"),
+    ("🖥️", "IP Intel",     "ip"),
+    ("📞", "Phone",        "phone"),
+    ("🔐", "Cert CT",      "cert"),
+    ("📄", "Metadata",     "metadata"),
+    ("📋", "Pastes",       "pastes"),
+    ("🖼️", "Rev. Image",   "revimage"),
+    ("💀", "Breach Agg",   "breach"),
+    ("👥", "Social OSINT", "social"),
+    ("🕷️",  "Crawler",     "crawler"),
+    ("🕸️",  "Graph",       "graph"),
+    ("📅", "Timeline",     "timeline"),
+    ("🗺️", "Geo Map",      "geo"),
+    ("📦", "Batch",        "batch"),
+    ("📂", "Cases",        "cases"),
+    ("🛡️",  "Counter Sur", "countersur"),
+    ("🌑", "Dark Web",     "darkweb"),
+    ("🔬", "Evidence",     "evidence"),
+    ("🔌", "Net Diag",     "netdiag"),
+    ("⚙️",  "Settings",    "settings"),
 ]
 
-
-class SidebarButton(QPushButton):
-    def __init__(self, emoji: str, label: str, parent=None):
-        super().__init__(parent)
-        self.setObjectName("sidebarBtn")
-        self.setCheckable(True)
-        self.setFixedHeight(60)
-        self.setText(f"{emoji}\n{label}")
-        self.setFont(QFont("Ubuntu", 9))
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+# Sidebar groups — references page names from NAV_ITEMS
+SIDEBAR_GROUPS = [
+    (None, ["dashboard"]),
+    ("INTELLIGENCE", [
+        "username", "domain", "email", "dorks",
+        "ip", "phone", "cert", "metadata", "pastes",
+        "revimage", "breach", "social",
+    ]),
+    ("ANALYSIS", [
+        "crawler", "graph", "timeline", "geo", "batch", "cases",
+    ]),
+    ("SECURITY", [
+        "countersur", "darkweb", "evidence", "netdiag",
+    ]),
+    ("SYSTEM", ["settings"]),
+]
 
 
 class Sidebar(QWidget):
@@ -85,85 +91,111 @@ class Sidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebar")
-        self.setFixedWidth(88)
+        self.setFixedWidth(220)
         self.setStyleSheet(SIDEBAR_STYLE)
+
+        self._btns: dict[int, QPushButton] = {}   # NAV_ITEMS index → button
+        _name_to_idx = {name: i for i, (_, _, name) in enumerate(NAV_ITEMS)}
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Logo area
+        # ── Logo area ─────────────────────────────────────────────────────────
         logo_frame = QWidget()
-        logo_layout = QVBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 10, 0, 10)
-        logo_label = QLabel("🐇")
-        logo_label.setObjectName("logoLabel")
-        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_label.setFont(QFont("Ubuntu", 26))
-        logo_sub = QLabel("OSINT")
-        logo_sub.setObjectName("logoSubLabel")
-        logo_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo_sub.setFont(QFont("Ubuntu", 8, QFont.Weight.Bold))
-        logo_sub.setStyleSheet("color: #00f5ff; letter-spacing: 3px; font-size: 8px;")
-        logo_layout.addWidget(logo_label)
-        logo_layout.addWidget(logo_sub)
+        logo_frame.setStyleSheet("background: transparent;")
+        ll = QHBoxLayout(logo_frame)
+        ll.setContentsMargins(14, 14, 14, 14)
+        ll.setSpacing(10)
+
+        rabbit_lbl = QLabel("🐇")
+        rabbit_lbl.setFont(QFont("Ubuntu", 20))
+        rabbit_lbl.setStyleSheet("border: none; background: transparent;")
+        ll.addWidget(rabbit_lbl)
+
+        text_col = QVBoxLayout()
+        text_col.setSpacing(1)
+        name_lbl = QLabel("Inspector Rabbit")
+        name_lbl.setObjectName("logoLabel")
+        name_lbl.setFont(QFont("Ubuntu", 12, QFont.Weight.Bold))
+        ver_lbl = QLabel("OSINT SUITE  ·  v1.5.0")
+        ver_lbl.setObjectName("logoSubLabel")
+        ver_lbl.setFont(QFont("Ubuntu", 8))
+        text_col.addWidget(name_lbl)
+        text_col.addWidget(ver_lbl)
+        ll.addLayout(text_col, 1)
         outer.addWidget(logo_frame)
 
-        # Divider
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("background: #21262d; margin: 0 8px;")
-        divider.setFixedHeight(1)
-        outer.addWidget(divider)
-        outer.addSpacing(4)
+        # ── Divider ───────────────────────────────────────────────────────────
+        div = QFrame()
+        div.setFrameShape(QFrame.Shape.HLine)
+        div.setStyleSheet("background: #1a2030; margin: 0;")
+        div.setFixedHeight(1)
+        outer.addWidget(div)
 
-        # Scrollable nav area
+        # ── Scrollable nav ────────────────────────────────────────────────────
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setStyleSheet("""
             QScrollArea { background: transparent; border: none; }
-            QScrollBar:vertical {
-                background: #010409; width: 4px; border: none;
-            }
+            QScrollBar:vertical { background: #070b12; width: 3px; border: none; }
             QScrollBar::handle:vertical {
-                background: #21262d; border-radius: 2px; min-height: 20px;
+                background: #1a2030; border-radius: 1px; min-height: 16px;
             }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
         """)
 
-        nav_container = QWidget()
-        nav_container.setStyleSheet("background: transparent;")
-        nav_layout = QVBoxLayout(nav_container)
-        nav_layout.setContentsMargins(0, 0, 0, 0)
+        nav = QWidget()
+        nav.setStyleSheet("background: transparent;")
+        nav_layout = QVBoxLayout(nav)
+        nav_layout.setContentsMargins(0, 6, 0, 12)
         nav_layout.setSpacing(0)
 
-        self.buttons = []
-        for i, (emoji, label, _) in enumerate(NAV_ITEMS):
-            btn = SidebarButton(emoji, label)
-            btn.clicked.connect(lambda checked, idx=i: self._on_click(idx))
-            nav_layout.addWidget(btn)
-            self.buttons.append(btn)
+        for section_title, page_names in SIDEBAR_GROUPS:
+            if section_title:
+                sec = QLabel(section_title)
+                sec.setObjectName("sidebarSection")
+                sec.setFont(QFont("Ubuntu", 9, QFont.Weight.Bold))
+                nav_layout.addWidget(sec)
+
+            for page_name in page_names:
+                if page_name not in _name_to_idx:
+                    continue
+                idx = _name_to_idx[page_name]
+                emoji, label, _ = NAV_ITEMS[idx]
+
+                btn = QPushButton(f"  {emoji}  {label}")
+                btn.setObjectName("sidebarBtn")
+                btn.setCheckable(True)
+                btn.setFixedHeight(36)
+                btn.setFont(QFont("Ubuntu", 12))
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                btn.clicked.connect(lambda _chk, i=idx: self._on_click(i))
+                self._btns[idx] = btn
+                nav_layout.addWidget(btn)
 
         nav_layout.addStretch()
-        scroll.setWidget(nav_container)
+        scroll.setWidget(nav)
         outer.addWidget(scroll, 1)
 
-        # Version label
-        ver_label = QLabel("v1.4.0")
-        ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ver_label.setStyleSheet("color: #21262d; font-size: 10px; padding: 6px;")
-        outer.addWidget(ver_label)
-
-        # Activate first button
-        self.buttons[0].setChecked(True)
+        # Select dashboard by default
+        if 0 in self._btns:
+            self._btns[0].setChecked(True)
 
     def _on_click(self, idx: int):
-        for i, btn in enumerate(self.buttons):
-            btn.setChecked(i == idx)
+        self.select(idx)
         self.page_changed.emit(idx)
+
+    def select(self, idx: int):
+        for i, btn in self._btns.items():
+            btn.setChecked(i == idx)
+
+    # Backwards-compat property used by navigate_to()
+    @property
+    def buttons(self):
+        return [self._btns[i] for i in sorted(self._btns)]
 
 
 class MainWindow(QMainWindow):
@@ -211,33 +243,47 @@ class MainWindow(QMainWindow):
         self.cert_page        = CertWidget()
         self.metadata_page    = MetadataWidget()
         self.paste_page       = PasteWidget()
-        self.crawler_page     = CrawlerWidget()
-        self.graph_page       = GraphWidget()
-        self.timeline_page    = TimelineWidget()
-        self.countersur_page  = CounterSurveillanceWidget()
         self.revimage_page    = ReverseImageWidget()
         self.breach_page      = BreachWidget()
         self.social_page      = SocialWidget()
+        self.crawler_page     = CrawlerWidget()
+        self.graph_page       = GraphWidget()
+        self.timeline_page    = TimelineWidget()
         self.geo_page         = GeoWidget()
+        self.batch_page       = BatchWidget()
+        self.cases_page       = CaseWidget()
+        self.countersur_page  = CounterSurveillanceWidget()
         self.darkweb_page     = DarkWebWidget()
         self.evidence_page    = EvidenceWidget()
         self.netdiag_page     = NetDiagWidget()
-        self.batch_page       = BatchWidget()
-        self.cases_page       = CaseWidget()
         self.settings_page    = SettingsWidget()
 
+        # Order MUST match NAV_ITEMS exactly
         for page in [
-            self.dashboard, self.username_page, self.domain_page,
-            self.email_page, self.dorks_page,
-            self.ip_page, self.phone_page, self.cert_page,
-            self.metadata_page, self.paste_page,
-            self.crawler_page, self.graph_page,
-            self.timeline_page, self.countersur_page,
-            self.revimage_page, self.breach_page, self.social_page,
-            self.geo_page, self.darkweb_page,
-            self.evidence_page, self.netdiag_page,
-            self.batch_page, self.cases_page,
-            self.settings_page,
+            self.dashboard,       # 0  dashboard
+            self.username_page,   # 1  username
+            self.domain_page,     # 2  domain
+            self.email_page,      # 3  email
+            self.dorks_page,      # 4  dorks
+            self.ip_page,         # 5  ip
+            self.phone_page,      # 6  phone
+            self.cert_page,       # 7  cert
+            self.metadata_page,   # 8  metadata
+            self.paste_page,      # 9  pastes
+            self.revimage_page,   # 10 revimage
+            self.breach_page,     # 11 breach
+            self.social_page,     # 12 social
+            self.crawler_page,    # 13 crawler
+            self.graph_page,      # 14 graph
+            self.timeline_page,   # 15 timeline
+            self.geo_page,        # 16 geo
+            self.batch_page,      # 17 batch
+            self.cases_page,      # 18 cases
+            self.countersur_page, # 19 countersur
+            self.darkweb_page,    # 20 darkweb
+            self.evidence_page,   # 21 evidence
+            self.netdiag_page,    # 22 netdiag
+            self.settings_page,   # 23 settings
         ]:
             self.stack.addWidget(page)
 
@@ -407,8 +453,7 @@ class MainWindow(QMainWindow):
 
     def _navigate(self, idx: int):
         self.stack.setCurrentIndex(idx)
-        for i, btn in enumerate(self.sidebar.buttons):
-            btn.setChecked(i == idx)
+        self.sidebar.select(idx)
 
     def _add_to_graph(self, data: dict):
         self.graph_page.add_data(data)
@@ -457,7 +502,7 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.4.0</p>
+        <p><b>Version:</b> 1.5.0</p>
         <p><b>Modules:</b> 24 OSINT + 4 Counter-Surveillance capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>

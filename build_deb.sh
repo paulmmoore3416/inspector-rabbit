@@ -5,7 +5,7 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="inspector-rabbit"
-APP_VERSION="1.4.0"
+APP_VERSION="1.5.0"
 APP_DIR="/opt/inspector-rabbit"
 DEB_DIR="${SCRIPT_DIR}/debian_pkg"
 PKG_NAME="${APP_NAME}_${APP_VERSION}_amd64"
