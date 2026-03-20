@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QFrame
 
 # Per-module accent colours — keep in sync with dashboard feature cards
 MODULE_ACCENTS: dict[str, str] = {
+    # original 14 modules
     'username':   '#00f5ff',
     'domain':     '#a78bfa',
     'email':      '#34d399',
@@ -22,6 +23,16 @@ MODULE_ACCENTS: dict[str, str] = {
     'timeline':   '#818cf8',
     'countersur': '#f85149',
     'settings':   '#8b949e',
+    # v1.4.0 — 9 new modules
+    'revimage':   '#e879f9',
+    'breach':     '#ff6b6b',
+    'social':     '#4ade80',
+    'geo':        '#06b6d4',
+    'darkweb':    '#a855f7',
+    'evidence':   '#38bdf8',
+    'netdiag':    '#f97316',
+    'batch':      '#94a3b8',
+    'cases':      '#f59e0b',
 }
 
 

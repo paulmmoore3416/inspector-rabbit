@@ -7,6 +7,32 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.0] — 2026-03-20
+
+### Added — 9 New Modules (5 community-requested + 4 enhancements)
+
+**Research-backed community requests:**
+- **🖼️ Reverse Image Search** — Load from URL or file, EXIF/GPS preview, launch Google Lens · TinEye · Yandex · Bing Visual Search
+- **💀 Breach Aggregator** — Multi-source credential exposure: HIBP · LeakCheck · BreachDirectory with severity scoring
+- **👥 Social Profile OSINT** — GitHub · Reddit public APIs + profile links for Twitter/X · Instagram · TikTok · YouTube · Twitch
+- **🗺️ GeoIP Map Tracker** — Batch-resolve IPs via ip-api.com, plot on dark world-map scatter chart with ISP/org data
+- **🌑 Dark Web Monitor** — Search Ahmia · Intelligence X · psbdmp · DarkSearch for target exposure and risk scoring
+
+**Recommended enhancements:**
+- **🔬 Evidence Capture** — SHA-256/MD5 page archiving, headers, JSON evidence bundles in `~/.inspector_rabbit_evidence/`
+- **🔌 Network Diagnostics** — Ping · traceroute · port banner grab · rDNS · service fingerprinting in live terminal output
+- **📦 Batch Processor** — Upload CSV of targets, run any OSINT module in bulk, aggregate results with export
+- **📂 Case Manager** — Full investigation lifecycle: create/notes/status/findings, PDF/JSON export
+
+### Changed
+- NAV_ITEMS expanded from 15 → 24 pages (sidebar scrolls)
+- Dashboard: v1.4.0 · 24 Modules, 9 new feature cards added
+- `MODULE_ACCENTS` in `components.py` updated with 9 new accent colours
+- Signal wiring (`status_message`, `send_to_graph`, `apply_settings`) extended to all new pages
+- Version bumped to 1.4.0 throughout
+
+---
+
 ## [1.3.0] — 2026-03-02
 
 ### Changed — Dashboard Redesign + Page Visual Identity

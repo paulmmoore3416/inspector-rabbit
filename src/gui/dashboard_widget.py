@@ -43,7 +43,7 @@ class HeroBanner(QFrame):
         text_col.addWidget(title)
 
         subtitle = QLabel(
-            "Advanced Open Source Intelligence Suite  ·  v1.3.0  ·  15 Modules"
+            "Advanced Open Source Intelligence Suite  ·  v1.4.0  ·  24 Modules"
         )
         subtitle.setFont(QFont("Ubuntu", 12))
         subtitle.setStyleSheet(
@@ -361,7 +361,7 @@ class DashboardWidget(QWidget):
 
         stat_data = [
             ("100+",  "Sites Checked",      "#00f5ff", "🌐"),
-            ("15+",   "OSINT Modules",       "#a78bfa", "🔧"),
+            ("24+",   "OSINT Modules",       "#a78bfa", "🔧"),
             ("8",     "DNS Record Types",    "#34d399", "📡"),
             ("60+",   "Dork Templates",      "#fb923c", "🔍"),
             ("3",     "Export Formats",      "#60a5fa", "📄"),
@@ -431,6 +431,52 @@ class DashboardWidget(QWidget):
              "Connection Guard · Traffic Monitor · Scan Detector · DNS Leak — "
              "watch who's watching you.",
              "Open Monitor →", "#f85149", "countersur"),
+
+            # ── New v1.4.0 features ────────────────────────────────────────
+            ("🖼️", "Reverse Image Search",
+             "Load image from URL or file, preview EXIF/GPS metadata, and launch "
+             "Google Lens · TinEye · Yandex · Bing Visual Search.",
+             "Analyze Image →", "#e879f9", "revimage"),
+
+            ("💀", "Breach Aggregator",
+             "Multi-source credential exposure: HIBP · LeakCheck · BreachDirectory — "
+             "consolidated severity scoring.",
+             "Check Breaches →", "#ff6b6b", "breach"),
+
+            ("👥", "Social Profile OSINT",
+             "Cross-platform profile intelligence: GitHub · Reddit · Twitter · "
+             "Instagram · TikTok · YouTube and more.",
+             "Scan Profiles →", "#4ade80", "social"),
+
+            ("🗺️", "GeoIP Map Tracker",
+             "Resolve IPs/domains via ip-api.com and plot them on an interactive "
+             "world-map scatter chart.",
+             "Track Locations →", "#06b6d4", "geo"),
+
+            ("🌑", "Dark Web Monitor",
+             "Search Ahmia · Intelligence X · psbdmp · DarkSearch for target "
+             "exposure across indexed dark-web sources.",
+             "Scan Dark Web →", "#a855f7", "darkweb"),
+
+            ("🔬", "Evidence Capture",
+             "Archive web pages with SHA-256 hashing, response headers, and "
+             "structured JSON evidence bundles.",
+             "Capture Evidence →", "#38bdf8", "evidence"),
+
+            ("🔌", "Network Diagnostics",
+             "Ping · traceroute · TCP port banner grab · rDNS — full network "
+             "path and service fingerprinting.",
+             "Run Diagnostics →", "#f97316", "netdiag"),
+
+            ("📦", "Batch Processor",
+             "Upload a CSV of targets and run any OSINT module across all of "
+             "them in bulk — aggregate results table.",
+             "Start Batch →", "#94a3b8", "batch"),
+
+            ("📂", "Case Manager",
+             "Save and restore full investigation cases: target, notes, status, "
+             "findings, and PDF/JSON export.",
+             "Open Cases →", "#f59e0b", "cases"),
         ]
 
         for i, (icon, title, desc, action, color, page) in enumerate(features):

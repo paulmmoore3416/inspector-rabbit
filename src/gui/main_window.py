@@ -29,6 +29,15 @@ from .metadata_widget import MetadataWidget
 from .paste_widget import PasteWidget
 from .timeline_widget import TimelineWidget
 from .counter_surveillance_widget import CounterSurveillanceWidget
+from .reverse_image_widget import ReverseImageWidget
+from .breach_widget import BreachWidget
+from .social_widget import SocialWidget
+from .geo_widget import GeoWidget
+from .darkweb_widget import DarkWebWidget
+from .evidence_widget import EvidenceWidget
+from .netdiag_widget import NetDiagWidget
+from .batch_widget import BatchWidget
+from .case_widget import CaseWidget
 
 
 NAV_ITEMS = [
@@ -46,6 +55,15 @@ NAV_ITEMS = [
     ("🕸️",  "Graph",      "graph"),
     ("📅", "Timeline",    "timeline"),
     ("🛡️",  "Counter Sur","countersur"),
+    ("🖼️", "Rev. Image",  "revimage"),
+    ("💀", "Breach Agg",  "breach"),
+    ("👥", "Social OSINT","social"),
+    ("🗺️", "Geo Map",     "geo"),
+    ("🌑", "Dark Web",    "darkweb"),
+    ("🔬", "Evidence",    "evidence"),
+    ("🔌", "Net Diag",    "netdiag"),
+    ("📦", "Batch",       "batch"),
+    ("📂", "Cases",       "cases"),
     ("⚙️",  "Settings",   "settings"),
 ]
 
@@ -134,7 +152,7 @@ class Sidebar(QWidget):
         outer.addWidget(scroll, 1)
 
         # Version label
-        ver_label = QLabel("v1.3.0")
+        ver_label = QLabel("v1.4.0")
         ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver_label.setStyleSheet("color: #21262d; font-size: 10px; padding: 6px;")
         outer.addWidget(ver_label)
@@ -197,6 +215,15 @@ class MainWindow(QMainWindow):
         self.graph_page       = GraphWidget()
         self.timeline_page    = TimelineWidget()
         self.countersur_page  = CounterSurveillanceWidget()
+        self.revimage_page    = ReverseImageWidget()
+        self.breach_page      = BreachWidget()
+        self.social_page      = SocialWidget()
+        self.geo_page         = GeoWidget()
+        self.darkweb_page     = DarkWebWidget()
+        self.evidence_page    = EvidenceWidget()
+        self.netdiag_page     = NetDiagWidget()
+        self.batch_page       = BatchWidget()
+        self.cases_page       = CaseWidget()
         self.settings_page    = SettingsWidget()
 
         for page in [
@@ -206,6 +233,10 @@ class MainWindow(QMainWindow):
             self.metadata_page, self.paste_page,
             self.crawler_page, self.graph_page,
             self.timeline_page, self.countersur_page,
+            self.revimage_page, self.breach_page, self.social_page,
+            self.geo_page, self.darkweb_page,
+            self.evidence_page, self.netdiag_page,
+            self.batch_page, self.cases_page,
             self.settings_page,
         ]:
             self.stack.addWidget(page)
@@ -300,23 +331,35 @@ class MainWindow(QMainWindow):
         for page in [
             self.username_page, self.domain_page, self.email_page,
             self.ip_page, self.phone_page, self.cert_page,
+            self.revimage_page, self.breach_page, self.social_page,
+            self.geo_page, self.evidence_page, self.netdiag_page,
+            self.batch_page,
         ]:
             if hasattr(page, 'send_to_graph'):
                 page.send_to_graph.connect(self._add_to_graph)
 
         # status_message wiring — statusbar + counter surveillance terminal
         osint_pages = [
-            ('username', self.username_page),
-            ('domain',   self.domain_page),
-            ('email',    self.email_page),
-            ('dorks',    self.dorks_page),
-            ('crawler',  self.crawler_page),
-            ('ip',       self.ip_page),
-            ('phone',    self.phone_page),
-            ('cert',     self.cert_page),
-            ('metadata', self.metadata_page),
-            ('pastes',   self.paste_page),
-            ('timeline', self.timeline_page),
+            ('username',  self.username_page),
+            ('domain',    self.domain_page),
+            ('email',     self.email_page),
+            ('dorks',     self.dorks_page),
+            ('crawler',   self.crawler_page),
+            ('ip',        self.ip_page),
+            ('phone',     self.phone_page),
+            ('cert',      self.cert_page),
+            ('metadata',  self.metadata_page),
+            ('pastes',    self.paste_page),
+            ('timeline',  self.timeline_page),
+            ('revimage',  self.revimage_page),
+            ('breach',    self.breach_page),
+            ('social',    self.social_page),
+            ('geo',       self.geo_page),
+            ('darkweb',   self.darkweb_page),
+            ('evidence',  self.evidence_page),
+            ('netdiag',   self.netdiag_page),
+            ('batch',     self.batch_page),
+            ('cases',     self.cases_page),
         ]
         for mod_name, page in osint_pages:
             if hasattr(page, 'status_message'):
@@ -335,7 +378,7 @@ class MainWindow(QMainWindow):
                     lambda m, mn=mod_name, pg=page: self._log_to_timeline(mn, pg, m)
                 )
 
-        # Settings
+        # Settings propagated to all pages that accept them
         self.settings_page.settings_changed.connect(self._apply_settings)
 
     def _relay_to_countersur(self, mod_name: str, page, message: str):
@@ -397,6 +440,9 @@ class MainWindow(QMainWindow):
             self.username_page, self.domain_page, self.email_page,
             self.ip_page, self.phone_page, self.cert_page,
             self.metadata_page, self.paste_page,
+            self.revimage_page, self.breach_page, self.social_page,
+            self.geo_page, self.darkweb_page, self.evidence_page,
+            self.netdiag_page, self.batch_page, self.cases_page,
         ]:
             if hasattr(page, 'apply_settings'):
                 page.apply_settings(settings)
@@ -411,8 +457,8 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.3.0</p>
-        <p><b>Modules:</b> 15 OSINT + 4 Counter-Surveillance capabilities</p>
+        <p><b>Version:</b> 1.4.0</p>
+        <p><b>Modules:</b> 24 OSINT + 4 Counter-Surveillance capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>
         <p style='color:#f85149; font-size:11px;'>
