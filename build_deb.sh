@@ -5,7 +5,7 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_NAME="inspector-rabbit"
-APP_VERSION="1.3.0"
+APP_VERSION="1.4.0"
 APP_DIR="/opt/inspector-rabbit"
 DEB_DIR="${SCRIPT_DIR}/debian_pkg"
 PKG_NAME="${APP_NAME}_${APP_VERSION}_amd64"
@@ -24,7 +24,7 @@ err() { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 echo -e """
 ${CYAN}
   ╔═══════════════════════════════════════════╗
-  ║   🐇 Inspector Rabbit .deb Builder v1.0   ║
+  ║   🐇 Inspector Rabbit .deb Builder v1.4   ║
   ║   Advanced OSINT Desktop Application      ║
   ╚═══════════════════════════════════════════╝
 ${NC}"""
@@ -42,11 +42,13 @@ pip3 install --quiet --break-system-packages \
     PyQt6 requests aiohttp python-whois dnspython \
     shodan beautifulsoup4 lxml reportlab Pillow networkx \
     matplotlib googlesearch-python cryptography pyOpenSSL \
+    psutil phonenumbers pypdf \
     2>/dev/null || \
 pip3 install --quiet --user \
     PyQt6 requests aiohttp python-whois dnspython \
     shodan beautifulsoup4 lxml reportlab Pillow networkx \
     matplotlib googlesearch-python cryptography pyOpenSSL \
+    psutil phonenumbers pypdf \
     2>/dev/null || warn "Some packages may not have installed (check manually)"
 ok "Python dependencies installed"
 
@@ -221,11 +223,13 @@ pip3 install --quiet --break-system-packages \
     PyQt6 requests aiohttp python-whois dnspython \
     shodan beautifulsoup4 lxml reportlab Pillow networkx \
     matplotlib googlesearch-python cryptography pyOpenSSL \
+    psutil phonenumbers pypdf \
     2>/dev/null || \
 pip3 install --quiet --user \
     PyQt6 requests aiohttp python-whois dnspython \
     shodan beautifulsoup4 lxml reportlab Pillow networkx \
     matplotlib googlesearch-python cryptography pyOpenSSL \
+    psutil phonenumbers pypdf \
     2>/dev/null || true
 
 # Update icon cache

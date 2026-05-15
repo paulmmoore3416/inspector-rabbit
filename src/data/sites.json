@@ -97,11 +97,65 @@
     "error_code": 404,
     "category": "gaming"
   },
+  "Patreon": {
+    "url": "https://www.patreon.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "crowdfunding"
+  },
+  "Letterboxd": {
+    "url": "https://letterboxd.com/{}/",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Goodreads": {
+    "url": "https://www.goodreads.com/user/show/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
+  "Last.fm": {
+    "url": "https://www.last.fm/user/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "SoundCloud": {
+    "url": "https://soundcloud.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "music"
+  },
+  "Dribbble": {
+    "url": "https://dribbble.com/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "design"
+  },
+  "Behance": {
+    "url": "https://www.behance.net/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "design"
+  },
+  "ProductHunt": {
+    "url": "https://www.producthunt.com/@{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "tech"
+  },
+  "About.me": {
+    "url": "https://about.me/{}",
+    "error_type": "status_code",
+    "error_code": 404,
+    "category": "social"
+  },
   "Flickr": {
     "url": "https://www.flickr.com/people/{}",
     "error_type": "status_code",
     "error_code": 404,
-    "category": "photo"
+    "category": "media"
   },
   "DeviantArt": {
     "url": "https://www.deviantart.com/{}",

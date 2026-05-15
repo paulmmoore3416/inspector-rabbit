@@ -41,6 +41,7 @@ class PhoneWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._result = None
+        self._thread = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -201,13 +202,17 @@ class PhoneWidget(QWidget):
         self.variants_table.setRowCount(0)
         self.links_table.setRowCount(0)
 
-        thread = PhoneOsintThread(phone, region)
-        thread.progress.connect(lambda m: self.log.append(f"  ↳ {m}"))
-        thread.result_ready.connect(self._on_result)
-        thread.error.connect(lambda e: self.log.append(f"❌ {e}"))
-        thread.start()
+        self._thread = PhoneOsintThread(phone, region)
+        self._thread.progress.connect(lambda m: self.log.append(f"  ↳ {m}"))
+        self._thread.result_ready.connect(self._on_result)
+        self._thread.error.connect(self._on_error)
+        self._thread.start()
         self.analyze_btn.setEnabled(False)
         self.status_message.emit(f"Analyzing phone {phone}...")
+
+    def _on_error(self, error):
+        self.log.append(f"❌ {error}")
+        self.analyze_btn.setEnabled(True)
 
     def _on_result(self, result):
         self._result = result

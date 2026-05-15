@@ -119,14 +119,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.4.0] — 2026-05-14
+
+### Added
+
+- **Dark Web Search Module** — new 🕵️‍♂️ page for searching onion services:
+  - Integrates Ahmia and Phobos public gateways
+  - Async multi-gateway search without local Tor proxy requirement
+  - Automated onion address extraction and source attribution
+  - One-click copy to clipboard for onion links
+- **WHOIS History** — enhanced Domain Intelligence:
+  - Scrapes IP history and past ownership data from ViewDNS.info
+  - New "History" tab in Domain Intelligence results
+  - Tracks IP changes, locations, and owners over time
+- **Integrated Dashboard** — Dark Web Search added to capabilities and feature grid
+- **Enhanced Module Count** — Now featuring 16+ core OSINT modules
+
 ## [Unreleased]
 
 ### Planned
 
-- Dark web Tor `.onion` search integration
 - OSINT workflow automation / playbooks
 - Collaborative investigation sharing (encrypted export)
-- Whois history timeline
 - More paste sources (GitLab snippets, PrivateBin)
 - Username check for additional 50+ platforms
 - Map visualization for geolocation results

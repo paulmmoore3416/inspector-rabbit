@@ -27,6 +27,7 @@ from .phone_widget import PhoneWidget
 from .cert_widget import CertWidget
 from .metadata_widget import MetadataWidget
 from .paste_widget import PasteWidget
+from .dark_web_widget import DarkWebWidget
 from .timeline_widget import TimelineWidget
 from .counter_surveillance_widget import CounterSurveillanceWidget
 
@@ -42,6 +43,7 @@ NAV_ITEMS = [
     ("🔐", "Cert CT",     "cert"),
     ("📄", "Metadata",    "metadata"),
     ("📋", "Pastes",      "pastes"),
+    ("🕵️‍♂️", "Dark Web",    "darkweb"),
     ("🕷️",  "Crawler",    "crawler"),
     ("🕸️",  "Graph",      "graph"),
     ("📅", "Timeline",    "timeline"),
@@ -193,6 +195,7 @@ class MainWindow(QMainWindow):
         self.cert_page        = CertWidget()
         self.metadata_page    = MetadataWidget()
         self.paste_page       = PasteWidget()
+        self.darkweb_page     = DarkWebWidget()
         self.crawler_page     = CrawlerWidget()
         self.graph_page       = GraphWidget()
         self.timeline_page    = TimelineWidget()
@@ -203,7 +206,7 @@ class MainWindow(QMainWindow):
             self.dashboard, self.username_page, self.domain_page,
             self.email_page, self.dorks_page,
             self.ip_page, self.phone_page, self.cert_page,
-            self.metadata_page, self.paste_page,
+            self.metadata_page, self.paste_page, self.darkweb_page,
             self.crawler_page, self.graph_page,
             self.timeline_page, self.countersur_page,
             self.settings_page,
@@ -316,6 +319,7 @@ class MainWindow(QMainWindow):
             ('cert',     self.cert_page),
             ('metadata', self.metadata_page),
             ('pastes',   self.paste_page),
+            ('darkweb',  self.darkweb_page),
             ('timeline', self.timeline_page),
         ]
         for mod_name, page in osint_pages:

@@ -30,6 +30,7 @@ class EmailWidget(QWidget):
         super().__init__(parent)
         self._thread = None
         self._result = None
+        self._pattern_thread = None
         self._settings = {}
         self._setup_ui()
 
@@ -358,9 +359,9 @@ class EmailWidget(QWidget):
 
         self.status_log.append(f"⚡  Generating patterns for {first} {last} @ {domain}...")
 
-        thread = EmailPatternThread(first, last, domain)
-        thread.result_ready.connect(self._on_patterns)
-        thread.start()
+        self._pattern_thread = EmailPatternThread(first, last, domain)
+        self._pattern_thread.result_ready.connect(self._on_patterns)
+        self._pattern_thread.start()
 
     def _on_patterns(self, patterns: list):
         self.patterns_table.setRowCount(0)

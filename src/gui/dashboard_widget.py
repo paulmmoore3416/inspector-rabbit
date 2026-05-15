@@ -43,7 +43,7 @@ class HeroBanner(QFrame):
         text_col.addWidget(title)
 
         subtitle = QLabel(
-            "Advanced Open Source Intelligence Suite  ·  v1.3.0  ·  15 Modules"
+            "Advanced Open Source Intelligence Suite  ·  v1.3.0  ·  16 Modules"
         )
         subtitle.setFont(QFont("Ubuntu", 12))
         subtitle.setStyleSheet(
@@ -361,7 +361,7 @@ class DashboardWidget(QWidget):
 
         stat_data = [
             ("100+",  "Sites Checked",      "#00f5ff", "🌐"),
-            ("15+",   "OSINT Modules",       "#a78bfa", "🔧"),
+            ("16+",   "OSINT Modules",       "#a78bfa", "🔧"),
             ("8",     "DNS Record Types",    "#34d399", "📡"),
             ("60+",   "Dork Templates",      "#fb923c", "🔍"),
             ("3",     "Export Formats",      "#60a5fa", "📄"),
@@ -414,6 +414,10 @@ class DashboardWidget(QWidget):
             ("📋", "Paste & Leak Scanner",
              "GitHub · HackerNews · Reddit · Pastebin — exposed credential search.",
              "Scan Pastes →", "#f472b6", "pastes"),
+
+            ("🕵️‍♂️", "Dark Web Search",
+             "Search onion services via public gateways without Tor proxy.",
+             "Start Deep Search →", "#7c3aed", "darkweb"),
 
             ("🕷️", "Web Crawler",
              "Spider sites to extract emails, phones, and social links.",

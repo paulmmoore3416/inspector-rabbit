@@ -17,6 +17,13 @@ import random
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Configure Matplotlib for PyQt6 early
+try:
+    import matplotlib
+    matplotlib.use('QtAgg')
+except ImportError:
+    pass
+
 # Suppress SSL warnings for OSINT purposes
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)

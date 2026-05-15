@@ -60,8 +60,18 @@ class TimelineWidget(QWidget):
         self._events = _load_timeline()
         self._filter_type = 'all'
         self._filter_text = ''
+        self._save_timer = QTimer()
+        self._save_timer.setInterval(5000)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.timeout.connect(self._do_save)
+        self._needs_save = False
         self._setup_ui()
         self._refresh_table()
+
+    def _do_save(self):
+        if self._needs_save:
+            _save_timeline(self._events)
+            self._needs_save = False
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -216,6 +226,39 @@ class TimelineWidget(QWidget):
         self._filter_text = self.search_input.text().lower()
         self._refresh_table()
 
+    def _add_row_to_table(self, ev: dict, row_idx: int):
+        self.table.setSortingEnabled(False)
+        self.table.insertRow(row_idx)
+        
+        ts = ev.get('timestamp', '')[:16].replace('T', ' ')
+        ev_type = ev.get('type', 'note')
+        icon, color_hex = EVENT_TYPES.get(ev_type, ('●', '#8b949e'))
+
+        time_item = QTableWidgetItem(ts)
+        time_item.setForeground(QColor("#484f58"))
+        time_item.setFont(QFont("Ubuntu Mono", 9))
+        self.table.setItem(row_idx, 0, time_item)
+
+        type_item = QTableWidgetItem(f"{icon} {ev_type}")
+        type_item.setForeground(QColor(color_hex))
+        type_item.setFont(QFont("Ubuntu", 9, QFont.Weight.Bold))
+        self.table.setItem(row_idx, 1, type_item)
+
+        target_item = QTableWidgetItem(ev.get('target', ''))
+        target_item.setForeground(QColor("#00f5ff"))
+        self.table.setItem(row_idx, 2, target_item)
+
+        summary_item = QTableWidgetItem(ev.get('summary', '')[:100])
+        self.table.setItem(row_idx, 3, summary_item)
+
+        tags = ', '.join(ev.get('tags', []))
+        tag_item = QTableWidgetItem(tags)
+        tag_item.setForeground(QColor("#a78bfa"))
+        self.table.setItem(row_idx, 4, tag_item)
+
+        time_item.setData(Qt.ItemDataRole.UserRole, ev)
+        self.table.setSortingEnabled(True)
+
     def _refresh_table(self):
         filtered = self._get_filtered()
         # Sort newest first
@@ -223,38 +266,8 @@ class TimelineWidget(QWidget):
 
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        for ev in filtered:
-            row = self.table.rowCount()
-            self.table.insertRow(row)
-
-            ts = ev.get('timestamp', '')[:16].replace('T', ' ')
-            ev_type = ev.get('type', 'note')
-            icon, color_hex = EVENT_TYPES.get(ev_type, ('●', '#8b949e'))
-
-            time_item = QTableWidgetItem(ts)
-            time_item.setForeground(QColor("#484f58"))
-            time_item.setFont(QFont("Ubuntu Mono", 9))
-            self.table.setItem(row, 0, time_item)
-
-            type_item = QTableWidgetItem(f"{icon} {ev_type}")
-            type_item.setForeground(QColor(color_hex))
-            type_item.setFont(QFont("Ubuntu", 9, QFont.Weight.Bold))
-            self.table.setItem(row, 1, type_item)
-
-            target_item = QTableWidgetItem(ev.get('target', ''))
-            target_item.setForeground(QColor("#00f5ff"))
-            self.table.setItem(row, 2, target_item)
-
-            summary_item = QTableWidgetItem(ev.get('summary', '')[:100])
-            self.table.setItem(row, 3, summary_item)
-
-            tags = ', '.join(ev.get('tags', []))
-            tag_item = QTableWidgetItem(tags)
-            tag_item.setForeground(QColor("#a78bfa"))
-            self.table.setItem(row, 4, tag_item)
-
-            # Store full event in user data
-            time_item.setData(Qt.ItemDataRole.UserRole, ev)
+        for i, ev in enumerate(filtered):
+            self._add_row_to_table(ev, i)
 
         self.table.setSortingEnabled(True)
         self.count_label.setText(f"{len(filtered)} events")
@@ -371,9 +384,21 @@ class TimelineWidget(QWidget):
             'tags': tags or [],
         }
         self._events.append(event)
-        _save_timeline(self._events)
-        self._refresh_table()
-        self.status_message.emit(f"Timeline: {ev_type} — {target}")
+        self._needs_save = True
+        if not self._save_timer.isActive():
+            self._save_timer.start()
+
+        # Update table if it matches current filter
+        if self._filter_type != 'all' and ev_type != self._filter_type:
+            return
+        if self._filter_text:
+            txt = self._filter_text.lower()
+            if not (txt in target.lower() or txt in summary.lower()):
+                return
+
+        self._add_row_to_table(event, 0) # Insert at top
+        self.count_label.setText(f"{len(self._get_filtered())} events")
+        self._update_stats()
 
     def apply_settings(self, s):
         pass

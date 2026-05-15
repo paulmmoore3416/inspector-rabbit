@@ -125,46 +125,52 @@ class UsernameWorker(QObject):
         self._stop = True
 
     def run(self):
-        sites = load_sites()
-        if not sites:
-            self.error.emit("Failed to load sites database")
-            return
-
-        if self.site_filter:
-            sites = {k: v for k, v in sites.items() if k in self.site_filter}
-
-        site_items = list(sites.items())
-        total = len(site_items)
-        completed = [0]
-
-        def check_and_emit(site_name, site_data):
-            if self._stop:
+        try:
+            sites = load_sites()
+            if not sites:
+                self.error.emit("Failed to load sites database")
                 return
-            result = check_single_site(site_name, site_data, self.username, self.timeout)
-            with self._lock:
-                self._results.append(result)
-                completed[0] += 1
-                self.result_ready.emit(result)
-                self.progress.emit(completed[0], total)
 
-        threads = []
-        semaphore = threading.Semaphore(self.max_threads)
+            if self.site_filter:
+                sites = {k: v for k, v in sites.items() if k in self.site_filter}
 
-        def worker(site_name, site_data):
-            with semaphore:
-                check_and_emit(site_name, site_data)
+            site_items = list(sites.items())
+            total = len(site_items)
+            completed = [0]
 
-        for site_name, site_data in site_items:
-            if self._stop:
-                break
-            t = threading.Thread(target=worker, args=(site_name, site_data), daemon=True)
-            threads.append(t)
-            t.start()
+            def check_and_emit(site_name, site_data):
+                if self._stop:
+                    return
+                try:
+                    result = check_single_site(site_name, site_data, self.username, self.timeout)
+                    with self._lock:
+                        self._results.append(result)
+                        completed[0] += 1
+                        self.result_ready.emit(result)
+                        self.progress.emit(completed[0], total)
+                except Exception as e:
+                    print(f"Error checking {site_name}: {e}")
 
-        for t in threads:
-            t.join()
+            threads = []
+            semaphore = threading.Semaphore(self.max_threads)
 
-        self.finished.emit(self._results)
+            def worker(site_name, site_data):
+                with semaphore:
+                    check_and_emit(site_name, site_data)
+
+            for site_name, site_data in site_items:
+                if self._stop:
+                    break
+                t = threading.Thread(target=worker, args=(site_name, site_data), daemon=True)
+                threads.append(t)
+                t.start()
+
+            for t in threads:
+                t.join()
+
+            self.finished.emit(self._results)
+        except Exception as e:
+            self.error.emit(f"Worker crash: {e}")
 
 
 class UsernameCheckerThread(QThread):

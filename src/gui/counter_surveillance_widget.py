@@ -23,7 +23,6 @@ from PyQt6.QtGui import QFont, QColor, QTextCursor
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib
-matplotlib.use('QtAgg')
 
 from ..modules.connection_guard import ConnectionGuard
 from ..modules.traffic_monitor import TrafficMonitor

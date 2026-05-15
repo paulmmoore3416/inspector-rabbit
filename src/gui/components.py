@@ -17,6 +17,7 @@ MODULE_ACCENTS: dict[str, str] = {
     'cert':       '#fbbf24',
     'metadata':   '#fb923c',
     'pastes':     '#f472b6',
+    'darkweb':    '#7c3aed',
     'crawler':    '#60a5fa',
     'graph':      '#f472b6',
     'timeline':   '#818cf8',

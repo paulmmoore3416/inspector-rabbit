@@ -18,3 +18,5 @@ cryptography>=40.0.0
 pyOpenSSL>=23.0.0
 socid-extractor>=0.0.27
 psutil>=5.9.0
+phonenumbers>=8.13.0
+pypdf>=3.0.0

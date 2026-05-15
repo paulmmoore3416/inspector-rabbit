@@ -38,6 +38,32 @@ COMMON_SUBDOMAINS = [
 ]
 
 
+from bs4 import BeautifulSoup
+
+def get_whois_history(domain: str) -> List[Dict]:
+    """Scrape WHOIS history from viewdns.info."""
+    url = f"https://viewdns.info/iphistory/?domain={domain}"
+    history = []
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, 'lxml')
+            table = soup.find('table', border="1")
+            if table:
+                rows = table.find_all('tr')[1:] # Skip header
+                for row in rows:
+                    cols = row.find_all('td')
+                    if len(cols) >= 4:
+                        history.append({
+                            'ip': cols[0].get_text(strip=True),
+                            'location': cols[1].get_text(strip=True),
+                            'owner': cols[2].get_text(strip=True),
+                            'last_checked': cols[3].get_text(strip=True)
+                        })
+    except Exception as e:
+        print(f"Error fetching WHOIS history: {e}")
+    return history
+
 @dataclass
 class WhoisResult:
     domain: str
@@ -87,6 +113,38 @@ class DomainIntelResult:
     technologies: List[str] = field(default_factory=list)
     robots_txt: str = ""
     sitemap_found: bool = False
+    takeover_vulnerabilities: List[Dict] = field(default_factory=list)
+    domain_history: List[Dict] = field(default_factory=list)
+
+
+def check_takeovers(subdomains: List[str]) -> List[Dict]:
+    vulnerable = []
+    resolver = dns.resolver.Resolver()
+    resolver.timeout = 2
+    resolver.lifetime = 4
+
+    import concurrent.futures
+
+    def check_sub(sub):
+        try:
+            answers = resolver.resolve(sub, 'CNAME')
+            for rdata in answers:
+                cname_target = str(rdata.target).rstrip('.')
+                try:
+                    resolver.resolve(cname_target, 'A')
+                except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+                    return {'subdomain': sub, 'cname': cname_target, 'issue': 'CNAME points to NXDOMAIN (Potential Takeover)'}
+        except Exception:
+            pass
+        return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {executor.submit(check_sub, sub): sub for sub in subdomains}
+        for future in concurrent.futures.as_completed(futures):
+            res = future.result()
+            if res:
+                vulnerable.append(res)
+    return vulnerable
 
 
 def lookup_whois(domain: str) -> WhoisResult:
@@ -406,6 +464,9 @@ class DomainIntelThread(QThread):
 
             self.progress.emit("Checking sitemap...")
             result.sitemap_found = check_sitemap(self.domain)
+
+            self.progress.emit("Fetching domain history...")
+            result.domain_history = get_whois_history(self.domain)
 
             if self.do_subdomains:
                 self.progress.emit("Enumerating subdomains (this may take a moment)...")

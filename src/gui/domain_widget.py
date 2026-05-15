@@ -227,6 +227,10 @@ class DomainWidget(QWidget):
         """)
         self.tabs.addTab(self.robots_text, "🤖 Robots.txt")
 
+        # History tab
+        self.history_table = self._make_table(["IP Address", "Location", "Owner", "Last Checked"])
+        self.tabs.addTab(self.history_table, "📅 History")
+
         return panel
 
     def _make_table(self, headers) -> QTableWidget:
@@ -291,6 +295,7 @@ class DomainWidget(QWidget):
         self.tech_widget.clear()
         self.shodan_tree.clear()
         self.robots_text.clear()
+        self.history_table.setRowCount(0)
 
     def _on_result(self, result):
         self._result = result
@@ -376,6 +381,17 @@ class DomainWidget(QWidget):
         if result.subdomains:
             idx = self.tabs.indexOf(self.subdomain_table)
             self.tabs.setTabText(idx, f"🌿 Subdomains ({len(result.subdomains)})")
+
+        # History
+        for entry in result.domain_history:
+            row = self.history_table.rowCount()
+            self.history_table.insertRow(row)
+            ip_item = QTableWidgetItem(entry['ip'])
+            ip_item.setForeground(QColor("#00f5ff"))
+            self.history_table.setItem(row, 0, ip_item)
+            self.history_table.setItem(row, 1, QTableWidgetItem(entry['location']))
+            self.history_table.setItem(row, 2, QTableWidgetItem(entry['owner']))
+            self.history_table.setItem(row, 3, QTableWidgetItem(entry['last_checked']))
 
         # Technologies
         if result.technologies:
