@@ -91,12 +91,12 @@ class IpWidget(QWidget):
         self.do_ports.setChecked(True)
         lay.addWidget(self.do_ports)
 
-        self.do_blacklists = QCheckBox("Blacklist check (8 RBLs)")
+        self.do_blacklists = QCheckBox("DNS blacklist check")
         self.do_blacklists.setChecked(True)
         lay.addWidget(self.do_blacklists)
 
-        self.do_shodan = QCheckBox("Shodan lookup")
-        self.do_shodan.setChecked(False)
+        self.do_shodan = QCheckBox("Exposure (Shodan / InternetDB)")
+        self.do_shodan.setChecked(True)
         lay.addWidget(self.do_shodan)
 
         lay.addWidget(self._sep())
@@ -198,7 +198,8 @@ class IpWidget(QWidget):
             target,
             shodan_api_key=shodan_key if self.do_shodan.isChecked() else "",
             do_port_scan=self.do_ports.isChecked(),
-            do_blacklists=self.do_blacklists.isChecked()
+            do_blacklists=self.do_blacklists.isChecked(),
+            do_exposure=self.do_shodan.isChecked(),
         )
         self._thread.progress.connect(lambda m: self.log.append(f"  ↳ {m}"))
         self._thread.result_ready.connect(self._on_result)
@@ -210,7 +211,17 @@ class IpWidget(QWidget):
     def _on_result(self, result):
         self._result = result
         self.start_btn.setEnabled(True)
+        if result.error:
+            self.log.append(f"❌ {result.error}")
+            return
         self.log.append("✅ IP intelligence complete!")
+        for n in getattr(result, 'notes', []):
+            self.log.append(f"ℹ️  {n}")
+        if not result.geo:
+            for field, value in [("Target", result.target), ("Resolved IP", result.resolved_ip),
+                                 ("Scope", getattr(result, 'ip_scope', '')),
+                                 ("Reverse DNS", '\n'.join(result.reverse_dns) or "N/A")]:
+                self.geo_tree.addTopLevelItem(QTreeWidgetItem([field, str(value)]))
 
         # Geo
         if result.geo:
@@ -219,6 +230,10 @@ class IpWidget(QWidget):
                 ("Target", result.target),
                 ("Resolved IP", result.resolved_ip),
                 ("Reverse DNS", '\n'.join(result.reverse_dns) if result.reverse_dns else "N/A"),
+                ("Geo Source", g.source or g.error),
+                ("Network (RDAP)", (getattr(result, 'rdap', {}) or {}).get('name', '')),
+                ("Net Range", (getattr(result, 'rdap', {}) or {}).get('range', '')),
+                ("Registry", (getattr(result, 'rdap', {}) or {}).get('registry', '')),
                 ("Country", f"{g.country} ({g.country_code})"),
                 ("Region", g.region),
                 ("City", g.city),
@@ -277,6 +292,15 @@ class IpWidget(QWidget):
                 status = QTableWidgetItem("✅ Clean")
                 status.setForeground(QColor("#3fb950"))
             self.bl_table.setItem(row, 1, status)
+        for rbl, note in (getattr(result, 'blacklist_notes', {}) or {}).items():
+            if rbl in result.blacklists:
+                continue
+            row = self.bl_table.rowCount()
+            self.bl_table.insertRow(row)
+            self.bl_table.setItem(row, 0, QTableWidgetItem(rbl))
+            st = QTableWidgetItem(f"⚪ Unknown — {note}")
+            st.setForeground(QColor("#8b949e"))
+            self.bl_table.setItem(row, 1, st)
         idx = self.tabs.indexOf(self.bl_table)
         self.tabs.setTabText(idx, f"⛔ Blacklists ({listed_count} listed)")
 

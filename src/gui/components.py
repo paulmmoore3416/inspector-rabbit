@@ -8,20 +8,31 @@ from PyQt6.QtWidgets import QFrame
 
 # Per-module accent colours — keep in sync with dashboard feature cards
 MODULE_ACCENTS: dict[str, str] = {
-    'username':   '#00f5ff',
-    'domain':     '#a78bfa',
-    'email':      '#34d399',
-    'dorks':      '#fb923c',
-    'ip':         '#f87171',
-    'phone':      '#22d3ee',
-    'cert':       '#fbbf24',
-    'metadata':   '#fb923c',
-    'pastes':     '#f472b6',
-    'crawler':    '#60a5fa',
-    'graph':      '#f472b6',
-    'timeline':   '#818cf8',
-    'countersur': '#f85149',
-    'settings':   '#8b949e',
+    # Space Gray palette — Apple system colors
+    'username':   '#5ac8fa',   # teal
+    'domain':     '#bf5af2',   # purple
+    'email':      '#30d158',   # green
+    'dorks':      '#ff9f0a',   # orange
+    'ip':         '#ff453a',   # red
+    'phone':      '#5ac8fa',   # teal
+    'cert':       '#ffd60a',   # yellow
+    'metadata':   '#ff9f0a',   # orange
+    'pastes':     '#ff375f',   # pink
+    'crawler':    '#0a84ff',   # blue
+    'graph':      '#ff375f',   # pink
+    'timeline':   '#5e5ce6',   # indigo
+    'countersur': '#ff453a',   # red
+    'settings':   '#8e8e93',   # gray
+    # v1.4.0 — 9 new modules
+    'revimage':   '#bf5af2',   # purple
+    'breach':     '#ff453a',   # red
+    'social':     '#30d158',   # green
+    'geo':        '#5ac8fa',   # teal
+    'darkweb':    '#bf5af2',   # purple
+    'evidence':   '#5ac8fa',   # teal
+    'netdiag':    '#ff9f0a',   # orange
+    'batch':      '#8e8e93',   # gray
+    'cases':      '#ff9f0a',   # orange
 }
 
 
@@ -40,9 +51,8 @@ def apply_page_header_style(frame: QFrame, accent_color: str) -> None:
     """
     frame.setStyleSheet(f"""
         QFrame {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #0e1824, stop:0.35 #0a0f1c, stop:1 #060b14);
-            border-bottom: 1px solid {accent_color}33;
-            border-left: 4px solid {accent_color};
+            background: #161618;
+            border-bottom: 1px solid #2c2c2e;
+            border-left: 3px solid {accent_color};
         }}
     """)

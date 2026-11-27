@@ -15,6 +15,29 @@ from typing import Dict, List, Optional, Set
 import psutil
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from . import net
+
+
+def listening_ports() -> Set[int]:
+    """Local TCP ports in LISTEN state (connections to these are inbound)."""
+    ports = set()
+    try:
+        for c in psutil.net_connections(kind='inet'):
+            if c.status == psutil.CONN_LISTEN and c.laddr:
+                ports.add(c.laddr.port)
+    except (psutil.AccessDenied, OSError):
+        pass
+    return ports
+
+
+def is_inbound(conn, listen: Set[int]) -> bool:
+    if not conn.raddr or not conn.laddr:
+        return False
+    if conn.status == 'SYN_RECV':
+        return True
+    return conn.laddr.port in listen and conn.raddr.port not in listen
+
+
 
 @dataclass
 class ConnRecord:
@@ -90,6 +113,7 @@ class ConnectionGuard(QThread):
 
         current: Set[str] = set()
         inbound_count = 0
+        self._listen = listening_ports()
 
         for c in conns:
             if not c.raddr:
@@ -103,7 +127,8 @@ class ConnectionGuard(QThread):
 
                 if rec['inbound']:
                     inbound_count += 1
-                    self._track_inbound(c.raddr.ip, c.laddr.port)
+                    if not rec.get('tailnet'):
+                        self._track_inbound(c.raddr.ip, c.laddr.port)
 
                 # Suspicious outbound port
                 if c.raddr.port in self.OUTBOUND_SUSPICIOUS:
@@ -182,17 +207,20 @@ class ConnectionGuard(QThread):
         Returns (success, message).
         """
         # Method 1: ss -K (Linux iproute2 — no root needed for own connections)
+        def still_open():
+            try:
+                return any(c.raddr and c.raddr.ip == raddr and c.raddr.port == rport
+                           for c in psutil.net_connections(kind='inet'))
+            except Exception:
+                return True
         try:
-            result = subprocess.run(
-                ['ss', '-K', f'dst {raddr}', f'dport = {rport}'],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
+            subprocess.run(['ss', '-K', 'dst', raddr, 'dport', '=', str(rport)],
+                           capture_output=True, text=True, timeout=5)
+            time.sleep(0.3)
+            if not still_open():
                 self.log_event.emit(f"⚡ Kill: connection to {raddr}:{rport} terminated (ss -K)")
                 return True, f"Connection to {raddr}:{rport} killed via ss"
-        except FileNotFoundError:
-            pass
-        except Exception as exc:
+        except (FileNotFoundError, Exception):
             pass
 
         # Method 2: Find and SIGTERM the owning process
@@ -224,15 +252,18 @@ class ConnectionGuard(QThread):
         except Exception:
             proc_name = '—'
 
-        is_inbound = (
-            c.raddr.ip not in self._local_ips
-            and c.laddr.ip in self._local_ips
-            and c.status in ('ESTABLISHED', 'SYN_RECV', 'LISTEN')
-        )
-        risk = 'high' if (
-            c.laddr.port in self.INBOUND_SUSPICIOUS or
-            c.raddr.port in self.OUTBOUND_SUSPICIOUS
-        ) else ('medium' if is_inbound else 'low')
+        inbound = is_inbound(c, getattr(self, '_listen', set()))
+        remote_local = c.raddr.ip in self._local_ips or c.raddr.ip.startswith('127.') or c.raddr.ip == '::1'
+        tailnet = net.is_tailscale(c.raddr.ip)
+        if remote_local or tailnet:
+            risk = 'low'
+        elif inbound and c.laddr.port in self.INBOUND_SUSPICIOUS:
+            risk = 'high'
+        elif c.raddr.port in self.OUTBOUND_SUSPICIOUS:
+            risk = 'high'
+        else:
+            risk = 'medium' if inbound else 'low'
+        is_inbound_flag = inbound and not remote_local
 
         return {
             'key': key,
@@ -245,17 +276,18 @@ class ConnectionGuard(QThread):
             'pid': c.pid or 0,
             'process': proc_name,
             'risk': risk,
-            'inbound': is_inbound,
+            'inbound': is_inbound_flag,
+            'tailnet': tailnet,
         }
 
     @staticmethod
     def _collect_local_ips() -> Set[str]:
-        ips = {'127.0.0.1', '::1', '0.0.0.0'}
+        ips = {'127.0.0.1', '::1', '0.0.0.0', '::'}
         try:
             for _iface, addrs in psutil.net_if_addrs().items():
                 for addr in addrs:
-                    if addr.family == socket.AF_INET:
-                        ips.add(addr.address)
+                    if addr.family in (socket.AF_INET, socket.AF_INET6):
+                        ips.add(addr.address.split('%')[0])
         except Exception:
             pass
         return ips

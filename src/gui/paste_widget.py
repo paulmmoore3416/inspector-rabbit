@@ -100,13 +100,13 @@ class PasteWidget(QWidget):
         lay.addWidget(self._sep())
         self._lbl("SOURCES", lay)
 
-        self.src_github = QCheckBox("GitHub Gists & Code")
+        self.src_github = QCheckBox("GitHub (code*, repos, commits)")
         self.src_github.setChecked(True)
         self.src_hackernews = QCheckBox("HackerNews (Algolia)")
         self.src_hackernews.setChecked(True)
-        self.src_reddit = QCheckBox("Reddit (Pushshift)")
+        self.src_reddit = QCheckBox("Reddit (via search engine)")
         self.src_reddit.setChecked(True)
-        self.src_pastebin = QCheckBox("Pastebin (psbdmp)")
+        self.src_pastebin = QCheckBox("Pastebin (via search engine)")
         self.src_pastebin.setChecked(True)
 
         for cb in [self.src_github, self.src_hackernews, self.src_reddit, self.src_pastebin]:
@@ -263,7 +263,7 @@ class PasteWidget(QWidget):
             self.high_table.setItem(row2, 3, url_item2)
 
         # Source-specific tabs
-        if source in ('GitHub Gists', 'GitHub Code', 'GitHub Repos'):
+        if source in ('GitHub Code', 'GitHub Repos', 'GitHub Commits'):
             row3 = self.github_table.rowCount()
             self.github_table.insertRow(row3)
             type_item = QTableWidgetItem(source.replace('GitHub ', ''))

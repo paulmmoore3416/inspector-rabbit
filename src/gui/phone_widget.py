@@ -201,10 +201,11 @@ class PhoneWidget(QWidget):
         self.variants_table.setRowCount(0)
         self.links_table.setRowCount(0)
 
-        thread = PhoneOsintThread(phone, region)
+        # Keep a reference: a QThread garbage-collected while running aborts the app
+        self._thread = thread = PhoneOsintThread(phone, region)
         thread.progress.connect(lambda m: self.log.append(f"  ↳ {m}"))
         thread.result_ready.connect(self._on_result)
-        thread.error.connect(lambda e: self.log.append(f"❌ {e}"))
+        thread.error.connect(lambda e: (self.log.append(f"❌ {e}"), self.analyze_btn.setEnabled(True)))
         thread.start()
         self.analyze_btn.setEnabled(False)
         self.status_message.emit(f"Analyzing phone {phone}...")

@@ -88,7 +88,7 @@ class UsernameWidget(QWidget):
         t1 = QLabel("Username Intelligence")
         t1.setFont(QFont("Ubuntu", 15, QFont.Weight.Bold))
         t1.setStyleSheet("color: #e6edf3; border: none; background: transparent;")
-        t2 = QLabel("Hunt usernames across 100+ social platforms")
+        t2 = QLabel("Hunt usernames across 260+ live-verified sites")
         t2.setFont(QFont("Ubuntu", 11))
         t2.setStyleSheet("color: #8b949e; border: none; background: transparent;")
         title_layout.addWidget(t1)
@@ -308,14 +308,23 @@ class UsernameWidget(QWidget):
         self.stat_checked.setText("Checked: 0")
         self.progress_bar.setValue(0)
         self.log.clear()
-        self.log.append(f"🐇 Hunting username: '{username}' across 100+ platforms...")
-
         try:
             threads = int(self.threads_input.text())
         except ValueError:
             threads = 20
 
-        self._thread = UsernameCheckerThread(username, max_threads=threads)
+        site_filter = None
+        cat = self.category_combo.currentText()
+        if cat and cat != "All Categories":
+            site_filter = [k for k, v in load_sites().items()
+                           if v.get('category', 'other').lower() == cat.lower()]
+        n_sites = len(site_filter) if site_filter is not None else \
+            sum(1 for v in load_sites().values() if not v.get('nsfw'))
+        self.log.append(f"🐇 Hunting username: '{username}' across {n_sites} verified sites...")
+
+        timeout = int(getattr(self, '_settings', {}).get('request_timeout', 10) or 10)
+        self._thread = UsernameCheckerThread(username, site_filter=site_filter,
+                                             max_threads=threads, timeout=timeout)
         self._thread.result_ready.connect(self._on_result)
         self._thread.progress.connect(self._on_progress)
         self._thread.finished.connect(self._on_finished)
@@ -366,6 +375,10 @@ class UsernameWidget(QWidget):
 
         if result.found:
             status, fg, bg = "FOUND", "#3fb950", "#1a3a2a"
+        elif getattr(result, 'state', '') == 'blocked':
+            status, fg, bg = "BLOCKED", "#e3b341", "#2a2010"
+        elif getattr(result, 'state', '') == 'invalid':
+            status, fg, bg = "N/A (format)", "#484f58", None
         elif result.error:
             status = result.error[:20]
             fg, bg = "#e3b341", "#2a2010"

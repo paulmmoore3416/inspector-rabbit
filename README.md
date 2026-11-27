@@ -6,7 +6,7 @@
 
 ### Advanced Open Source Intelligence Suite
 
-![Version](https://img.shields.io/badge/version-1.0.0-00f5ff?style=flat-square&labelColor=010409)
+![Version](https://img.shields.io/badge/version-1.6.0-00f5ff?style=flat-square&labelColor=010409)
 ![Python](https://img.shields.io/badge/python-3.9%2B-00f5ff?style=flat-square&labelColor=010409&logo=python&logoColor=white)
 ![PyQt6](https://img.shields.io/badge/PyQt6-6.x-7c3aed?style=flat-square&labelColor=010409)
 ![Platform](https://img.shields.io/badge/platform-Linux-3fb950?style=flat-square&labelColor=010409)
@@ -23,24 +23,27 @@
 
 ## ✨ Features
 
-Inspector Rabbit packs **14 OSINT modules** into a single elegant dark-themed desktop application:
+Inspector Rabbit packs **24 OSINT and counter-surveillance modules** into one dark-themed desktop app.
+Every data source was live-tested for v1.6.0. When a source is blocked, rate-limited or needs a key, the app says so instead of guessing.
 
-| Module | Description |
-|--------|-------------|
-| 👤 **Username Hunt** | Search 100+ social platforms simultaneously (Sherlock-style) |
-| 🌐 **Domain Intelligence** | WHOIS · DNS · SSL · headers · tech fingerprinting · subdomain enumeration |
-| ✉️ **Email OSINT** | Validation · SMTP verify · Gravatar · HIBP breach check · pattern generation |
-| 🔍 **Google Dorks** | 60+ dork templates · DuckDuckGo/Bing execution · category browsing |
-| 🖥️ **IP Intelligence** | Geolocation · reverse DNS · blacklist/RBL check · port scan · Shodan · RDAP |
-| 📞 **Phone OSINT** | Validation · carrier · country · formats · direct search links |
-| 🔐 **Certificate Transparency** | crt.sh CT log search · subdomain discovery via SSL certs · issuer timeline |
-| 📄 **Metadata Extractor** | EXIF from images · GPS coordinates · PDF/DOCX author data |
-| 📋 **Paste & Leak Scanner** | GitHub · HackerNews · Reddit · Pastebin — exposed credential search |
-| 🕷️ **Web Crawler** | Recursive site spidering · email/phone/social link extraction |
-| 🕸️ **Network Graph** | Maltego-style force-directed graph visualization · drag · zoom · export |
-| 📅 **Investigation Timeline** | Chronological event log · auto-captures all findings · manual notes |
-| 📊 **Report Export** | HTML · JSON · PDF export of all findings |
-| ⚙️ **Settings** | API key management (Shodan, HIBP) · scan parameters |
+| Module | What it really does |
+|--------|---------------------|
+| 👤 **Username Hunt** | 260+ sites with Sherlock-derived rules, each **live-validated** (real account found, random names not found). Hits are re-confirmed before they're reported |
+| 🌐 **Domain Intelligence** | RDAP/WHOIS · DNS + SPF/DMARC · TLS trust & expiry · security headers · tech fingerprint · wildcard-aware subdomains · Shodan/InternetDB |
+| ✉️ **Email OSINT** | RFC validation · MX/null-MX · 10k-entry disposable list · SMTP probe with catch-all detection · Gravatar profile · XposedOrNot + HIBP breaches |
+| 🔍 **Google Dorks** | 60+ templates · Brave/Google APIs or Bing/DDG · off-target results discarded |
+| 🖥️ **IP Intelligence** | Geo (ip-api/ipwho.is) · RDAP owner & abuse contacts (all RIRs) · DNSBLs (refusals ≠ listings) · TCP ports · Shodan/InternetDB · IPv6 |
+| 📞 **Phone OSINT** | libphonenumber validation · carrier · region · type · timezones · lookup links |
+| 🔐 **Certificate Transparency** | crt.sh with retries → Cert Spotter fallback · in-scope subdomains · issuers · expiry |
+| 📄 **Metadata Extractor** | EXIF/GPS (JPEG/PNG/WebP/TIFF/HEIC) · PDF info + XMP · DOCX/XLSX/PPTX authors · file hashes |
+| 📋 **Paste & Leak Scanner** | GitHub code/repos/commits · HackerNews · Pastebin & Reddit via dork engine |
+| 💀 **Breach Aggregator** | HIBP · XposedOrNot · LeakCheck. Severity comes from the data exposed |
+| 👥 **Social Profiles** | Real profile data from 13 public APIs. Login-walled sites are marked *unverified* |
+| 🌑 **Dark Web** | Ahmia Tor index · Intelligence X · paste sites · GitHub code leaks · URLScan |
+| 🕷️ **Web Crawler** | robots-aware spider · validated emails/phones · social links |
+| 🗺️ **GeoIP Map** · 🔬 **Evidence Capture** · 🔌 **Net Diagnostics** · 📦 **Batch** · 📂 **Cases** · 🕸️ **Graph** · 📅 **Timeline** | Investigation workflow, SHA-256 evidence manifests, bulk processing |
+| 🛡️ **Counter-Surveillance** | Connection guard · scan detector · traffic monitor · DNS leak/hijack monitor (Tailscale-aware) |
+| 🧅 **Network Privacy** | Tor / SOCKS / HTTP proxy for every lookup · **kill switch** · DNS-over-HTTPS when proxied |
 
 ---
 
@@ -50,10 +53,10 @@ Inspector Rabbit packs **14 OSINT modules** into a single elegant dark-themed de
 
 ```bash
 # Download the latest release
-wget https://github.com/paulmmoore3416/inspector-rabbit/releases/latest/download/inspector-rabbit_1.0.0_amd64.deb
+wget https://github.com/paulmmoore3416/inspector-rabbit/releases/latest/download/inspector-rabbit_1.6.0_amd64.deb
 
 # Install
-sudo dpkg -i inspector-rabbit_1.0.0_amd64.deb
+sudo dpkg -i inspector-rabbit_1.6.0_amd64.deb
 
 # Launch
 inspector-rabbit
@@ -73,7 +76,17 @@ pip3 install -r requirements.txt
 python3 inspector_rabbit.py
 ```
 
-### Option 3: Build .deb Locally
+### Option 3: Hardened Container (rootless Podman + built-in Tor)
+
+```bash
+sudo apt install podman
+./run-container.sh
+```
+
+Read-only filesystem, no capabilities, no access to your home directory, and Tor plus the kill switch on by default.
+See [`docs/SECURITY.md`](docs/SECURITY.md).
+
+### Option 4: Build .deb Locally
 
 ```bash
 git clone https://github.com/paulmmoore3416/inspector-rabbit.git
@@ -90,24 +103,7 @@ chmod +x build_deb.sh
 - **Python**: 3.9+
 - **Dependencies**: See [`requirements.txt`](requirements.txt)
 
-```
-PyQt6 >= 6.4.0
-requests >= 2.28.0
-aiohttp >= 3.8.0
-python-whois >= 0.8.0
-dnspython >= 2.3.0
-shodan >= 1.28.0
-beautifulsoup4 >= 4.11.0
-lxml >= 4.9.0
-reportlab >= 3.6.0
-Pillow >= 9.4.0
-networkx >= 3.0
-matplotlib >= 3.6.0
-cryptography >= 39.0.0
-pyOpenSSL >= 23.0.0
-phonenumbers >= 8.13.0
-pypdf >= 3.0.0
-```
+Install with `pip3 install -r requirements.txt`. Key packages: PyQt6, requests + PySocks, dnspython, python-whois, phonenumbers, Pillow, pypdf, cryptography, beautifulsoup4/lxml, reportlab, matplotlib, psutil.
 
 ---
 
@@ -117,10 +113,26 @@ Some modules work better with API keys (all optional — app functions without t
 
 | Service | Module | Get Key |
 |---------|--------|---------|
-| **Shodan** | IP Intel, Domain | [account.shodan.io](https://account.shodan.io) |
-| **HaveIBeenPwned** | Email OSINT | [haveibeenpwned.com/API/Key](https://haveibeenpwned.com/API/Key) |
+| **Shodan** | IP Intel, Domain (free InternetDB used without a key) | [account.shodan.io](https://account.shodan.io) |
+| **HaveIBeenPwned** | Email, Breach (XposedOrNot used without a key) | [haveibeenpwned.com/API/Key](https://haveibeenpwned.com/API/Key) |
+| **GitHub token** | Paste scanner and Dark Web code search | [github.com/settings/tokens](https://github.com/settings/personal-access-tokens) |
+| **Intelligence X** | Dark Web | [intelx.io](https://intelx.io/account?tab=developer) |
+| **Brave Search / Google PSE** | Dorks, paste-site search | [brave.com/search/api](https://brave.com/search/api/) · [Google PSE](https://developers.google.com/custom-search/v1/introduction) |
+| **URLScan.io** | Dark Web (higher limits) | [urlscan.io](https://urlscan.io/user/profile/) |
 
-Configure in **Settings** (⚙️ sidebar) — keys stored locally in `~/.inspector_rabbit_settings.json`.
+Configure keys in **Settings** (⚙️ sidebar). They're stored locally in `~/.inspector_rabbit_settings.json` with owner-only (`0600`) permissions and are never committed.
+
+## 🧅 Privacy & OPSEC
+
+Without a proxy, every lookup reveals your real IP to the target. Set **Settings → Network Privacy → Tor + Kill switch** and press **Test connection**.
+[`docs/SECURITY.md`](docs/SECURITY.md) covers Tor, Tailscale exit nodes, the hardened container and VM setups.
+
+## 🧪 Tests
+
+```bash
+QT_QPA_PLATFORM=offscreen python -m pytest -q tests/test_offline.py   # offline unit tests
+QT_QPA_PLATFORM=offscreen python tests/gui_smoke.py                    # live end-to-end run of every page
+```
 
 ---
 
@@ -193,10 +205,10 @@ inspector-rabbit/
 
 ## ⚡ Quick Start Guide
 
-1. **Username Reconnaissance**: Enter a username → click *Hunt* → results appear in real-time across 100+ platforms
+1. **Username Reconnaissance**: Enter a username → click *Hunt* → results appear in real time across 260+ verified sites
 2. **Domain Analysis**: Enter `example.com` → DNS, WHOIS, SSL, subdomains, tech stack all collected automatically
 3. **Graph It**: Any result has a *Send to Graph* button — build relationship maps between targets
-4. **Search Pastes**: Enter an email/username → scans GitHub gists, Reddit, HackerNews, Pastebin for leaks
+4. **Search Pastes**: Enter an email/username → scans GitHub code/repos/commits, HackerNews, Pastebin and Reddit for leaks
 5. **Track Progress**: The Timeline tab auto-captures every scan you run for case management
 
 ---

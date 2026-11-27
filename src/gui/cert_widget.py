@@ -179,6 +179,8 @@ class CertWidget(QWidget):
             return
 
         self.log.append(f"✅ Found {result.total_certs} certs, {len(result.unique_subdomains)} subdomains!")
+        if getattr(result, 'source', ''):
+            self.log.append(f"   Source: {result.source}")
 
         # Subdomains
         for sub in result.unique_subdomains:

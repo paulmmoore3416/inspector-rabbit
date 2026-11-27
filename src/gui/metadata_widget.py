@@ -27,7 +27,7 @@ class MetadataFetchThread(QThread):
     def run(self):
         self.progress.emit(f"Fetching {self._url} ...")
         result = fetch_and_extract(self._url)
-        self.result_ready.emit(result)
+        self.result_ready.emit(result.to_dict())
 
 
 class MetadataWidget(QWidget):
@@ -229,15 +229,10 @@ class MetadataWidget(QWidget):
                 with open(path, 'rb') as f:
                     data = f.read()
                 import os
-                from ..modules.metadata_extractor import extract_image_metadata, extract_pdf_metadata
-                filename = os.path.basename(path)
-                ext = filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
-                if ext in ('jpg', 'jpeg', 'png', 'tiff', 'tif', 'gif', 'bmp', 'webp'):
-                    result = extract_image_metadata(data, filename)
-                elif ext == 'pdf':
-                    result = extract_pdf_metadata(data, filename)
-                else:
-                    result = {'error': f'Unsupported file type: {ext}', 'filename': filename}
+                from ..modules.metadata_extractor import extract_metadata_from_bytes
+                r = extract_metadata_from_bytes(data, os.path.basename(path))
+                r.source = 'file'
+                result = r.to_dict()
                 # emit via invokeMethod-compatible approach
                 from PyQt6.QtCore import QMetaObject, Qt as Qt2
                 self._pending_result = result
@@ -276,7 +271,7 @@ class MetadataWidget(QWidget):
         # Build overview tree
         info_root = QTreeWidgetItem(self.overview_tree, ["📋 File Info", ""])
         info_root.setExpanded(True)
-        for key in ['filename', 'file_type', 'file_size']:
+        for key in ['filename', 'file_format', 'file_size', 'sha256', 'md5']:
             val = result.get(key, '')
             if val:
                 QTreeWidgetItem(info_root, [key.replace('_', ' ').title(), str(val)])
@@ -302,14 +297,12 @@ class MetadataWidget(QWidget):
                     QTreeWidgetItem(img_root, [key.replace('_', ' ').title(), str(val)])
 
         # PDF-specific
-        if file_type == 'pdf':
+        if file_type in ('pdf', 'office') or result.get('document'):
             doc_root = QTreeWidgetItem(self.overview_tree, ["📄 Document Info", ""])
             doc_root.setExpanded(True)
-            for key in ['title', 'author', 'creator', 'producer', 'subject', 'keywords',
-                        'creation_date', 'modification_date', 'pages', 'encrypted']:
-                val = result.get(key, '')
+            for key, val in (result.get('document') or {}).items():
                 if val:
-                    QTreeWidgetItem(doc_root, [key.replace('_', ' ').title(), str(val)])
+                    QTreeWidgetItem(doc_root, [str(key), str(val)[:200]])
 
         # GPS
         gps = result.get('gps', {})

@@ -30,9 +30,14 @@ def main():
     from PyQt6.QtCore import Qt, QTimer
     from PyQt6.QtGui import QColor, QPalette
 
+    # Apply network privacy settings (proxy / kill switch) before any lookup runs
+    from src.modules.config import load_settings
+    from src.modules import net
+    net.configure(load_settings())
+
     app = QApplication(sys.argv)
     app.setApplicationName("Inspector Rabbit")
-    app.setApplicationVersion("1.3.0")
+    app.setApplicationVersion("1.6.0")
     app.setOrganizationName("InspectorRabbit")
     app.setStyle("Fusion")
 
@@ -246,7 +251,7 @@ class AnimatedSplash:
         p.setFont(QFont("Ubuntu", 8))
         p.setPen(QColor(0x21, 0x26, 0x2d))
         p.drawText(QRectF(0, self.H - 20, self.W, 16), Qt.AlignmentFlag.AlignCenter,
-                   "v1.3.0  ·  Educational Use Only  ·  github.com/paulmmoore3416/inspector-rabbit")
+                   "v1.6.0  ·  Educational Use Only  ·  github.com/paulmmoore3416/inspector-rabbit")
 
         p.end()
 

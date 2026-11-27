@@ -1,3 +1,4 @@
+import html as _html
 """
 Inspector Rabbit - Domain Intelligence Widget
 """
@@ -114,8 +115,8 @@ class DomainWidget(QWidget):
         self.do_subdomains.setChecked(True)
         layout.addWidget(self.do_subdomains)
 
-        self.do_shodan = QCheckBox("Shodan lookup")
-        self.do_shodan.setChecked(False)
+        self.do_shodan = QCheckBox("Exposure lookup (Shodan / InternetDB)")
+        self.do_shodan.setChecked(True)
         layout.addWidget(self.do_shodan)
 
         layout.addWidget(self._sep())
@@ -263,9 +264,10 @@ class DomainWidget(QWidget):
 
         shodan_key = self._settings.get('shodan_api_key', '')
         do_sub = self.do_subdomains.isChecked()
-        do_shodan = self.do_shodan.isChecked() and bool(shodan_key)
+        do_shodan = self.do_shodan.isChecked()
 
-        self._thread = DomainIntelThread(domain, shodan_key if do_shodan else "", do_sub)
+        self._thread = DomainIntelThread(domain, shodan_key if do_shodan else "", do_sub,
+                                         do_exposure=do_shodan)
         self._thread.progress.connect(lambda m: self.status_log.append(f"  ↳ {m}"))
         self._thread.result_ready.connect(self._on_result)
         self._thread.error.connect(self._on_error)
@@ -299,9 +301,14 @@ class DomainWidget(QWidget):
         self.status_log.append("\n✅ Domain intelligence complete!")
 
         # WHOIS
-        if result.whois and not result.whois.error:
+        if result.whois and result.whois.error and not result.whois.registrar:
+            self.whois_tree.addTopLevelItem(QTreeWidgetItem(["Lookup error", result.whois.error[:200]]))
+        for err in getattr(result, 'errors', []):
+            self.status_log.append(f"⚠️  {err}")
+        if result.whois and (result.whois.registrar or not result.whois.error):
             w = result.whois
             pairs = [
+                ("Source", getattr(w, 'source', '')),
                 ("Registrar", w.registrar),
                 ("Created", w.creation_date),
                 ("Expires", w.expiration_date),
@@ -315,10 +322,26 @@ class DomainWidget(QWidget):
                 if value:
                     item = QTreeWidgetItem([field, str(value)[:200]])
                     self.whois_tree.addTopLevelItem(item)
+            if w.status:
+                st_item = QTreeWidgetItem(["Status", f"{len(w.status)} flags"])
+                for st in w.status:
+                    st_item.addChild(QTreeWidgetItem(["", st]))
+                self.whois_tree.addTopLevelItem(st_item)
             ns_item = QTreeWidgetItem(["Name Servers", ""])
             for ns in w.name_servers:
                 ns_item.addChild(QTreeWidgetItem(["", ns]))
             self.whois_tree.addTopLevelItem(ns_item)
+        es = getattr(result, 'email_security', {}) or {}
+        if es:
+            es_item = QTreeWidgetItem(["Email Security", "SPF / DMARC"])
+            es_item.addChild(QTreeWidgetItem(["SPF", es.get('spf') or 'MISSING']))
+            es_item.addChild(QTreeWidgetItem(["DMARC", es.get('dmarc') or 'MISSING']))
+            for f in es.get('findings', []):
+                fi = QTreeWidgetItem(["⚠", f])
+                fi.setForeground(1, QColor("#ffa657"))
+                es_item.addChild(fi)
+            self.whois_tree.addTopLevelItem(es_item)
+        if result.whois or es:
             self.whois_tree.expandAll()
             self.tabs.setCurrentIndex(0)
 
@@ -334,10 +357,18 @@ class DomainWidget(QWidget):
             self.dns_table.setItem(row, 2, QTableWidgetItem(str(record.ttl)))
 
         # SSL
+        if result.ssl_info and result.ssl_info.error:
+            self.ssl_tree.addTopLevelItem(QTreeWidgetItem(["Error", result.ssl_info.error]))
         if result.ssl_info and not result.ssl_info.error:
             s = result.ssl_info
+            trust = "✅ Trusted" if s.verified else f"❌ NOT trusted — {s.verify_error}"
+            days = "" if s.days_remaining is None else (
+                f"{s.days_remaining} days" if s.days_remaining >= 0 else f"EXPIRED {-s.days_remaining} days ago")
             pairs = [
-                ("Subject", str(s.subject)),
+                ("Trust", trust),
+                ("TLS Version", s.tls_version),
+                ("Expires In", days),
+                ("Subject", str({k: v for k, v in s.subject.items() if not k.startswith('_')})),
                 ("Issuer", str(s.issuer)),
                 ("Version", str(s.version)),
                 ("Valid From", s.not_before),
@@ -345,7 +376,8 @@ class DomainWidget(QWidget):
                 ("Serial", s.serial_number),
             ]
             for field, value in pairs:
-                self.ssl_tree.addTopLevelItem(QTreeWidgetItem([field, value]))
+                if value:
+                    self.ssl_tree.addTopLevelItem(QTreeWidgetItem([field, str(value)]))
             if s.san:
                 san_item = QTreeWidgetItem(["Subject Alt Names", f"{len(s.san)} entries"])
                 for san in s.san:
@@ -364,6 +396,15 @@ class DomainWidget(QWidget):
             k_item.setFont(QFont("Ubuntu Mono", 10))
             self.headers_table.setItem(row, 0, k_item)
             self.headers_table.setItem(row, 1, QTableWidgetItem(str(value)[:200]))
+        if '_error' in result.http_headers:
+            self.status_log.append(f"⚠️  HTTP fetch failed: {result.http_headers['_error']}")
+        for hname, hval in (getattr(result, 'security_headers', {}) or {}).items():
+            row = self.headers_table.rowCount()
+            self.headers_table.insertRow(row)
+            k_item = QTableWidgetItem(f"[security] {hname}")
+            k_item.setForeground(QColor("#3fb950" if hval != 'MISSING' else "#f85149"))
+            self.headers_table.setItem(row, 0, k_item)
+            self.headers_table.setItem(row, 1, QTableWidgetItem(str(hval)[:200]))
 
         # Subdomains
         for sub in sorted(result.subdomains):
@@ -373,6 +414,8 @@ class DomainWidget(QWidget):
             item.setForeground(QColor("#3fb950"))
             self.subdomain_table.setItem(row, 0, item)
 
+        if getattr(result, 'wildcard_dns', False):
+            self.status_log.append("ℹ️  Wildcard DNS detected — wildcard-only answers were filtered out")
         if result.subdomains:
             idx = self.tabs.indexOf(self.subdomain_table)
             self.tabs.setTabText(idx, f"🌿 Subdomains ({len(result.subdomains)})")
@@ -383,7 +426,7 @@ class DomainWidget(QWidget):
             html += "<h3 style='color:#a78bfa; margin-bottom:12px;'>Detected Technologies</h3>"
             for tech in result.technologies:
                 color = "#00f5ff" if ":" in tech else "#3fb950"
-                html += f"<div style='display:inline-block; background:#21262d; border:1px solid #30363d; border-radius:6px; padding:4px 12px; margin:4px; color:{color}; font-size:12px;'>{tech}</div>"
+                html += f"<div style='display:inline-block; background:#21262d; border:1px solid #30363d; border-radius:6px; padding:4px 12px; margin:4px; color:{color}; font-size:12px;'>{_html.escape(tech)}</div>"
             html += "</div>"
             self.tech_widget.setHtml(html)
 
@@ -392,8 +435,9 @@ class DomainWidget(QWidget):
             for key, value in result.shodan_data.items():
                 if isinstance(value, list):
                     item = QTreeWidgetItem([key, f"{len(value)} items"])
-                    for v in value[:10]:
+                    for v in value[:50]:
                         item.addChild(QTreeWidgetItem(["", str(v)]))
+                    self.shodan_tree.addTopLevelItem(item)
                 else:
                     self.shodan_tree.addTopLevelItem(QTreeWidgetItem([key, str(value)]))
             self.shodan_tree.expandAll()

@@ -132,7 +132,7 @@ class DorksWidget(QWidget):
         target_row.addWidget(self.target_input, 1)
 
         self.engine_combo = QComboBox()
-        self.engine_combo.addItems(["DuckDuckGo", "Bing"])
+        self.engine_combo.addItems(["Auto", "Bing", "DuckDuckGo"])
         self.engine_combo.setFixedHeight(42)
         self.engine_combo.setFixedWidth(130)
         target_row.addWidget(self.engine_combo)
@@ -387,6 +387,10 @@ class DorksWidget(QWidget):
         self.google_links.setHtml(google_html)
 
     def _on_result(self, result, bulk_mode=False):
+        if result.error:
+            self.status_log.append(f"  ⚠️  {result.engine}: {result.error}")
+        elif not result.results:
+            self.status_log.append(f"  ∅ {result.engine}: no results for '{result.query[:60]}'")
         for item in result.results:
             row = self.results_table.rowCount()
             self.results_table.insertRow(row)

@@ -1,0 +1,46 @@
+# Inspector Rabbit — hardened desktop container
+#
+#   * runs as an unprivileged user (uid 1000), no sudo, no setuid binaries used
+#   * meant to run with a read-only root filesystem, all capabilities dropped
+#     and no-new-privileges (see ../run-container.sh)
+#   * ships its own Tor daemon so investigations can be routed through Tor
+#     without touching the host's Tor or network configuration
+#   * the host's home directory is never mounted — only an exports folder
+FROM docker.io/library/python:3.13-slim-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    QT_QPA_PLATFORM=wayland \
+    HOME=/home/rabbit
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        tor ca-certificates tini \
+        libgl1 libegl1 libglib2.0-0 libfontconfig1 libfreetype6 libdbus-1-3 \
+        libxkbcommon0 libxkbcommon-x11-0 libwayland-client0 libwayland-cursor0 libwayland-egl1 \
+        libx11-xcb1 libxcb1 libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+        libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 \
+        libxcb-xkb1 libxrender1 libxi6 libsm6 libice6 \
+        fonts-dejavu-core fonts-noto-color-emoji \
+        iputils-ping traceroute \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 --shell /usr/sbin/nologin rabbit
+
+WORKDIR /opt/inspector-rabbit
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY inspector_rabbit.py ./
+COPY src ./src
+COPY assets ./assets
+COPY container/entrypoint.sh /usr/local/bin/ir-entrypoint
+COPY container/torrc /etc/tor/torrc
+RUN chmod 0755 /usr/local/bin/ir-entrypoint \
+    && python -m compileall -q /opt/inspector-rabbit \
+    && chown -R root:root /opt/inspector-rabbit && chmod -R a-w /opt/inspector-rabbit
+
+USER rabbit
+VOLUME ["/home/rabbit"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/ir-entrypoint"]
+CMD ["python", "/opt/inspector-rabbit/inspector_rabbit.py"]
