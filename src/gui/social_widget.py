@@ -114,15 +114,8 @@ class SocialWidget(QWidget):
         lay.addWidget(self._sep())
         self._lbl("PLATFORMS", lay)
 
-        platforms = [
-            ("github",    "🐙 GitHub"),
-            ("reddit",    "🤖 Reddit"),
-            ("twitter",   "🐦 Twitter / X"),
-            ("instagram", "📸 Instagram"),
-            ("tiktok",    "🎵 TikTok"),
-            ("youtube",   "▶️  YouTube"),
-            ("twitch",    "🎮 Twitch"),
-        ]
+        from ..modules.social_scraper import PLATFORMS
+        platforms = PLATFORMS
 
         self._platform_checks = {}
         for key, label in platforms:
@@ -317,11 +310,14 @@ class SocialWidget(QWidget):
         platform = profile.get('platform', '')
         username = profile.get('username', '')
         display = profile.get('display_name', '')
-        followers = profile.get('followers', '—')
-        posts = profile.get('posts', '—')
+        followers = str(profile.get('followers', '—'))
+        posts = str(profile.get('posts', '—'))
         bio = (profile.get('bio', '') or '')[:80]
         url = profile.get('url', '')
         color = QColor(PLATFORM_COLORS.get(platform, '#c9d1d9'))
+        if profile.get('status') == 'unverified':
+            platform = f"{platform} (unverified)"
+            color = QColor('#8b949e')
 
         # Profiles table row
         row = self.profile_table.rowCount()
@@ -407,7 +403,8 @@ class SocialWidget(QWidget):
         self.scan_btn.setEnabled(True)
         found = summary.get('found', 0)
         errors = summary.get('errors', 0)
-        self.log.append(f"✅ Done — {found} profile(s) found, {errors} error(s)")
+        unverified = summary.get('unverified', 0)
+        self.log.append(f"✅ Done — {found} verified profile(s), {unverified} manual check(s), {errors} error(s)")
         self.profile_count_label.setText(f"Profiles found: {found}")
         self.status_message.emit(f"Social scan: {found} profiles found")
 

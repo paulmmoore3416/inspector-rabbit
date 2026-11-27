@@ -1,5 +1,5 @@
 """
-Inspector Rabbit - Dashboard Widget  v1.5.0
+Inspector Rabbit - Dashboard Widget  v1.6.0
 Space Gray theme: clean hero, refined stat cards, per-module feature cards.
 """
 
@@ -57,7 +57,7 @@ class HeroBanner(QFrame):
         title.setStyleSheet("color: #f5f5f7; border: none; background: transparent;")
         text_col.addWidget(title)
 
-        subtitle = QLabel("Advanced Open Source Intelligence Suite  ·  v1.5.0  ·  24 Modules")
+        subtitle = QLabel("Advanced Open Source Intelligence Suite  ·  v1.6.0  ·  24 Modules")
         subtitle.setFont(QFont("Ubuntu", 12))
         subtitle.setStyleSheet("color: #636366; border: none; background: transparent;")
         text_col.addWidget(subtitle)

@@ -118,7 +118,7 @@ class Sidebar(QWidget):
         name_lbl = QLabel("Inspector Rabbit")
         name_lbl.setObjectName("logoLabel")
         name_lbl.setFont(QFont("Ubuntu", 12, QFont.Weight.Bold))
-        ver_lbl = QLabel("OSINT SUITE  ·  v1.5.0")
+        ver_lbl = QLabel("OSINT SUITE  ·  v1.6.0")
         ver_lbl.setObjectName("logoSubLabel")
         ver_lbl.setFont(QFont("Ubuntu", 8))
         text_col.addWidget(name_lbl)
@@ -426,6 +426,9 @@ class MainWindow(QMainWindow):
 
         # Settings propagated to all pages that accept them
         self.settings_page.settings_changed.connect(self._apply_settings)
+        # Push saved settings (API keys, timeouts) to every page at startup,
+        # not only after the user presses Save.
+        self._apply_settings(self.settings_page.get_settings(), announce=False)
 
     def _relay_to_countersur(self, mod_name: str, page, message: str):
         """Relay OSINT module activity to the Counter Surveillance terminal."""
@@ -436,9 +439,17 @@ class MainWindow(QMainWindow):
 
     def _log_to_timeline(self, ev_type: str, page, message: str):
         """Auto-capture status messages as timeline events."""
+        # The timeline's own status messages must not be logged back into the
+        # timeline — that recursed until RecursionError and flooded the file.
+        if page is self.timeline_page or getattr(self, '_in_timeline_log', False):
+            return
         target = self._extract_target(page)
         if message and not message.startswith('🐇 Inspector Rabbit'):
-            self.timeline_page.add_event(ev_type, target or '—', message)
+            self._in_timeline_log = True
+            try:
+                self.timeline_page.add_event(ev_type, target or '—', message)
+            finally:
+                self._in_timeline_log = False
 
     @staticmethod
     def _extract_target(page) -> str:
@@ -480,7 +491,7 @@ class MainWindow(QMainWindow):
         if path:
             self._set_status(f"Report saved: {path}")
 
-    def _apply_settings(self, settings: dict):
+    def _apply_settings(self, settings: dict, announce: bool = True):
         for page in [
             self.username_page, self.domain_page, self.email_page,
             self.ip_page, self.phone_page, self.cert_page,
@@ -491,7 +502,8 @@ class MainWindow(QMainWindow):
         ]:
             if hasattr(page, 'apply_settings'):
                 page.apply_settings(settings)
-        self._set_status("Settings applied to all modules")
+        from ..modules import net
+        self._set_status(("Settings applied · " if announce else "") + f"Network: {net.describe()}")
 
     def _show_about(self):
         msg = QMessageBox(self)
@@ -502,7 +514,7 @@ class MainWindow(QMainWindow):
         <h2 style='color:#00f5ff;'>🐇 Inspector Rabbit</h2>
         <p style='color:#8b949e;'>Advanced OSINT Intelligence Suite</p>
         <br>
-        <p><b>Version:</b> 1.5.0</p>
+        <p><b>Version:</b> 1.6.0</p>
         <p><b>Modules:</b> 24 OSINT + 4 Counter-Surveillance capabilities</p>
         <p><b>Purpose:</b> Educational &amp; Authorized Security Research</p>
         <br>

@@ -16,6 +16,8 @@ import requests
 from bs4 import BeautifulSoup
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from . import net
+
 
 USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -25,7 +27,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
 ]
 
-EVIDENCE_DIR = str(Path.home() / ".inspector_rabbit_evidence")
+from .config import data_path
+EVIDENCE_DIR = data_path(".inspector_rabbit_evidence")
 
 
 class EvidenceCaptureThread(QThread):
@@ -45,7 +48,9 @@ class EvidenceCaptureThread(QThread):
             self.error.emit(f"Evidence capture failed: {exc}")
 
     def _capture(self):
-        url = self.url
+        url = self.url.strip()
+        if '://' not in url:
+            url = 'https://' + url
         self.progress.emit(f"Starting capture of: {url}")
 
         # Parse domain for case_id
@@ -61,19 +66,22 @@ class EvidenceCaptureThread(QThread):
         case_dir = os.path.join(self.save_dir, case_id)
 
         self.progress.emit(f"Creating evidence directory: {case_dir}")
-        os.makedirs(case_dir, exist_ok=True)
+        os.makedirs(self.save_dir, mode=0o700, exist_ok=True)
+        os.makedirs(case_dir, mode=0o700, exist_ok=True)
 
         # Fetch the URL
         self.progress.emit("Fetching page content...")
         headers = {"User-Agent": random.choice(USER_AGENTS)}
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=10,
-            allow_redirects=True,
-            verify=False,
-        )
+        tls_verified = True
+        try:
+            response = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        except requests.exceptions.SSLError as exc:
+            self.progress.emit(f"⚠️  TLS verification failed ({exc}); capturing anyway and recording it")
+            tls_verified = False
+            response = requests.get(url, headers=headers, timeout=20, allow_redirects=True, verify=False)
         raw_bytes = response.content
+        host = net.clean_host(response.url)
+        server_ip = net.resolve_host(host)
 
         self.progress.emit(f"Received {len(raw_bytes):,} bytes  (HTTP {response.status_code})")
 
@@ -111,7 +119,14 @@ class EvidenceCaptureThread(QThread):
         metadata = {
             "url": url,
             "final_url": response.url,
+            "redirect_chain": [r.url for r in response.history] + [response.url],
+            "server_ip": server_ip,
+            "tls_verified": tls_verified if response.url.startswith('https') else None,
+            "captured_via": net.describe(),
+            "tool": f"Inspector Rabbit {net.APP_VERSION}",
+            "user_agent": headers["User-Agent"],
             "timestamp": timestamp,
+            "timestamp_iso": datetime.now(timezone.utc).isoformat(),
             "sha256": sha256,
             "md5": md5,
             "status_code": response.status_code,
@@ -130,6 +145,14 @@ class EvidenceCaptureThread(QThread):
         with open(metadata_path, "w", encoding="utf-8") as fh:
             json.dump(metadata, fh, indent=2, default=str)
         self.progress.emit(f"Saved metadata: {metadata_path}")
+
+        # Integrity manifest (sha256sum-compatible) for chain of custody
+        manifest_path = os.path.join(case_dir, "SHA256SUMS")
+        with open(manifest_path, "w", encoding="utf-8") as fh:
+            for name in ("page.html", "headers.json", "metadata.json"):
+                with open(os.path.join(case_dir, name), "rb") as f:
+                    fh.write(f"{hashlib.sha256(f.read()).hexdigest()}  {name}\n")
+        self.progress.emit("Wrote SHA256SUMS (verify with: sha256sum -c SHA256SUMS)")
 
         # Build full result dict (includes headers for the GUI)
         result = dict(metadata)

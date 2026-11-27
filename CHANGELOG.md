@@ -7,6 +7,98 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [1.6.0] — 2026-11-26
+
+Accuracy and reliability release. Every module was audited against live
+services. Anything that faked, guessed or silently dropped data was fixed or removed.
+
+### Added
+- **Network privacy layer** (`src/modules/net.py`): route every lookup through Tor
+  (service or Tor Browser) or a custom SOCKS5/HTTP proxy. Includes a **kill switch**
+  that refuses to send traffic when the proxy is down, DNS-over-HTTPS through the
+  proxy (no resolver leaks), SOCKS-tunnelled TCP for SSL/banner/port checks, and a
+  guard that blocks unproxyable traffic (ping, traceroute, SMTP, port-43 WHOIS)
+  unless allowed. Settings → Network Privacy has a **Test connection** button showing
+  the exit IP and whether it is a Tor exit.
+- **Hardened container** (`run-container.sh`, `container/`): rootless Podman,
+  read-only root filesystem, all capabilities dropped, no host home directory,
+  Wayland-only display, a container-private Tor client, and Tor + kill switch on by default.
+- `docs/SECURITY.md`: OPSEC guide covering Tor, Tailscale exit nodes, the container and a dedicated VM.
+- New free data sources: XposedOrNot breach analytics, Shodan InternetDB, RDAP
+  (registration, IP ownership and abuse contacts for all RIRs), Cert Spotter fallback,
+  ipwho.is fallback, Gravatar profiles, and Bluesky, Mastodon, GitLab, Keybase, HackerNews,
+  DEV, Chess.com, Lichess and Docker Hub profile APIs.
+- Optional API keys: GitHub token, Intelligence X, URLScan, Brave Search, Google Programmable Search.
+- Domain Intel: SPF/DMARC assessment, security-header audit, TLS trust and expiry
+  status, a technology fingerprint built from page bodies, and wildcard-DNS-aware subdomain discovery.
+- Metadata: EXIF/GPS from PNG/WebP/TIFF/HEIC (previously JPEG only), PDF XMP,
+  DOCX/XLSX/PPTX author/company/editing-time metadata, and SHA-256/MD5 of every file.
+- Evidence capture: resolved server IP, TLS verification state, redirect chain,
+  proxy route, and a `SHA256SUMS` manifest (`sha256sum -c` compatible).
+- Tests: `tests/test_offline.py` (25 unit tests) and `tests/gui_smoke.py` (drives every page end-to-end),
+  plus a GitHub Actions workflow that runs the offline tests on every push.
+- `tools/build_sites.py`: regenerates and live-validates the username site database.
+
+### Fixed — false or fake results
+- Username Hunt: 101 of 102 sites used plain HTTP-status checks, so Instagram,
+  TikTok, Twitter and others reported **every** username as found. Replaced with 268 Sherlock-derived
+  rules, each live-validated (real account found twice, three random names not found).
+  Hits are re-confirmed at scan time, and blocked or rate-limited responses are shown as BLOCKED, never as not found.
+- Social Profiles: Twitter/X, TikTok and Instagram "URL only" results were counted as
+  found profiles. They are now labelled *unverified (manual check)*. The Twitch check counted
+  every username as found.
+- IP blacklists: Spamhaus's "public resolver" refusal (127.255.255.x) was reported as
+  LISTED. SORBS (shut down) was removed.
+- DNS Leak Monitor: raised a HIGH "DNS spoofing" alert every 15 s because example.com's IP
+  changed in 2025. Now uses fixed-anycast canaries, discovers systemd-resolved upstreams,
+  detects NXDOMAIN hijacking, and recognises Tailscale MagicDNS.
+- Connection Guard / Scan Detector: every outbound connection was treated as inbound, so
+  the app's own lookups were flagged as port scans. Inbound now means "to a listening port".
+- Dorks: DuckDuckGo bot challenges showed as "0 results", and Bing serves unrelated filler
+  results to scrapers. Results are now checked against `site:`/`filetype:`/`inurl:`
+  operators and off-target results are discarded and reported.
+- Breach Aggregator: HIBP's domain endpoint (breaches *of* a site) was presented as
+  breaches of the email. Severity was based on breach size rather than exposed data. "Email addresses" no longer counts as medium severity.
+- Email: catch-all servers reported every address as valid, null-MX domains were treated as
+  deliverable, and the disposable list had 30 entries (now 10,000+ from a maintained list).
+- Web Crawler: the phone regex matched dates and IDs (libphonenumber validation is now used),
+  `mailto:`/`tel:` links were ignored, share/intent links counted as social profiles, and
+  the depth limit counted against the page budget.
+- Batch Processor: the username check used HTTP 200 = found and the phone check guessed
+  from prefixes. Batch mode now runs the same logic as the individual modules.
+- HTML reports inserted scraped data unescaped, so a page title could inject script into the report.
+
+### Fixed — crashes and broken features
+- Paste Scanner: the module emitted objects while the UI expected dicts, so it crashed on the first
+  result. Pushshift and psbdmp are offline. GitHub code search silently returned nothing without a token.
+- Metadata Extractor: URL fetches crashed (a dataclass was emitted on a dict signal).
+- Phone and email-pattern lookups could abort the app ("QThread destroyed while running").
+- API keys were only applied after pressing Save. Saved keys were ignored at startup.
+- Dark Web: Ahmia now requires a form token (it always returned 0 results). DarkSearch and
+  psbdmp are offline, the hard-coded fake IntelX "test-key" was removed, and grep.app needs a browser challenge.
+- Domain Intel: Shodan list fields were never displayed, technology detection never saw the
+  page body, WHOIS/SSL errors were hidden, and WHOIS failed for many TLDs (RDAP is now primary).
+- Certificate Transparency: crt.sh 502s were fatal (it now retries, then falls back to Cert Spotter).
+  The "include expired" option did nothing, and out-of-scope SAN names were included.
+- Network Diagnostics: Linux-only ping/traceroute flags, so the Windows build couldn't run them. The SSH banner was corrupted by probing
+  before reading.
+- Report timestamps were labelled UTC but used local time.
+- **Timeline infinite loop**: the Timeline page's own status messages were logged back
+  into the Timeline. Every status update recursed until RecursionError (possible crash)
+  and filled `~/.inspector_rabbit_timeline.json` with ~500 junk events.
+- Counter-surveillance terminal rendered relayed text as HTML (now escaped).
+- `INSPECTOR_RABBIT_HOME` relocates all app data (used by the container and the tests).
+
+### Security
+- Settings file (API keys) is written atomically with `0600` permissions. Case and evidence directories are `0700`.
+- No more blanket `verify=False`: TLS is verified first, and any fallback is recorded.
+
+### Removed
+- Unused dependencies: aiohttp, googlesearch-python, colorama, tqdm, socid-extractor,
+  networkx, pyOpenSSL. Added PySocks, phonenumbers and pypdf, which the app needs.
+
+---
+
 ## [1.4.0] — 2026-03-20
 
 ### Added — 9 New Modules (5 community-requested + 4 enhancements)

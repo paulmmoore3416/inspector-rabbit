@@ -1,5 +1,5 @@
 """
-Inspector Rabbit - Global Stylesheet  v1.5.0
+Inspector Rabbit - Global Stylesheet  v1.6.0
 Space Gray theme — Apple-inspired warm dark gray palette.
 """
 

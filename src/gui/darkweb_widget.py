@@ -1,5 +1,5 @@
 """
-Inspector Rabbit - Dark Web Exposure Widget  v1.5.0
+Inspector Rabbit - Dark Web Exposure Widget  v1.6.0
 Space Gray theme. Per-source toggles, stop button, detail panel,
 query history, CSV/JSON export.
 """
@@ -34,9 +34,8 @@ QUERY_TYPES = ["Email", "Domain", "Username", "Keyword"]
 SOURCE_ICONS = {
     "Ahmia.fi":           "🧅",
     "Intelligence X":     "🗄️",
-    "Pastebin (psbdmp)":  "📋",
-    "DarkSearch.io":      "🌑",
-    "grep.app (GitHub)":  "🐙",
+    "Paste sites":        "📋",
+    "GitHub code leaks":  "🐙",
     "URLScan.io":         "🔬",
 }
 
@@ -94,7 +93,7 @@ class DarkWebWidget(QWidget):
         t1.setFont(QFont("Ubuntu", 15, QFont.Weight.Bold))
         t1.setStyleSheet("color: #f5f5f7; border: none; background: transparent;")
         t2 = QLabel(
-            "Ahmia · Intelligence X · Pastebin · DarkSearch · GitHub leaks · URLScan"
+            "Ahmia (Tor index) · Intelligence X · Paste sites · GitHub code leaks · URLScan"
             "  —  all free, no Tor required"
         )
         t2.setStyleSheet(

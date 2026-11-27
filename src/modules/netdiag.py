@@ -4,11 +4,17 @@ Ping, traceroute, port scanning, banner grabbing, and rDNS.
 """
 
 import re
+import shutil
 import socket
 import subprocess
+import sys
 from datetime import datetime, timezone
 
 from PyQt6.QtCore import QThread, pyqtSignal
+
+from . import net
+
+_WIN = sys.platform.startswith('win')
 
 
 SCAN_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 3306, 3389, 8080, 8443]
@@ -55,15 +61,20 @@ class NetDiagThread(QThread):
     def run(self):
         target = self.target
 
-        # Resolve IP
-        try:
-            ip = socket.gethostbyname(target)
+        target = net.clean_host(target)
+        self.target = target
+        if net.proxy_active():
+            self._emit(f"Network: {net.describe()}", "info")
+        ip = net.resolve_host(target)
+        if ip:
             self._result["ip"] = ip
             if ip != target:
                 self._emit(f"Resolved {target} → {ip}", "info")
-        except socket.gaierror as exc:
-            self._emit(f"DNS resolution failed: {exc}", "error")
-            ip = target
+        else:
+            self._emit(f"DNS resolution failed for {target}", "error")
+            self.result_ready.emit(self._result)
+            self.done.emit()
+            return
 
         # rDNS
         if "rdns" in self.tests:
@@ -97,29 +108,24 @@ class NetDiagThread(QThread):
 
     def _do_rdns(self, ip: str, original_target: str):
         self._emit("Running reverse DNS lookup...", "info")
-        try:
-            # If the target looks like an IP, do rDNS; otherwise forward DNS
-            socket.inet_aton(ip)
-            hostname, _aliases, _addrs = socket.gethostbyaddr(ip)
-            self._result["hostname"] = hostname
-            self._emit(f"rDNS: {ip} → {hostname}", "success")
-        except (socket.herror, socket.gaierror) as exc:
-            self._emit(f"rDNS: no PTR record ({exc})", "warn")
-        except OSError:
-            # Not an IP — resolve forward
-            try:
-                addrs = socket.getaddrinfo(original_target, None)
-                resolved = addrs[0][4][0] if addrs else "?"
-                self._result["hostname"] = original_target
-                self._emit(f"Forward DNS: {original_target} → {resolved}", "success")
-            except Exception as exc2:
-                self._emit(f"DNS lookup error: {exc2}", "error")
+        names = net.reverse_dns(ip)
+        if names:
+            self._result["hostname"] = names[0]
+            for n in names:
+                self._emit(f"rDNS: {ip} → {n}", "success")
+        else:
+            self._emit(f"rDNS: no PTR record for {ip}", "warn")
 
     def _do_ping(self, target: str):
         self._emit("Pinging target (4 packets)...", "info")
+        if not net.direct_allowed():
+            self._emit("Ping skipped: ICMP cannot go through the proxy and would reveal your IP "
+                       "(enable 'Allow direct traffic when proxied' to run it).", "warn")
+            return
+        cmd = ["ping", "-n", "4", "-w", "2000", target] if _WIN else ["ping", "-c", "4", "-W", "2", target]
         try:
             proc = subprocess.run(
-                ["ping", "-c", "4", "-W", "2", target],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=15,
@@ -131,8 +137,8 @@ class NetDiagThread(QThread):
 
             # Parse avg RTT
             rtt_match = re.search(
-                r"rtt\s+min/avg/max/mdev\s*=\s*[\d.]+/([\d.]+)/", output
-            )
+                r"(?:rtt|round-trip)\s+min/avg/max/(?:mdev|stddev)\s*=\s*[\d.]+/([\d.]+)/", output
+            ) or re.search(r"Average = (\d+)ms", output)
             if rtt_match:
                 avg_ms = float(rtt_match.group(1))
                 self._result["ping_ms"] = avg_ms
@@ -144,9 +150,9 @@ class NetDiagThread(QThread):
                 self._result["ttl"] = int(ttl_match.group(1))
 
             # Parse packet loss
-            loss_match = re.search(r"(\d+)%\s+packet loss", output)
+            loss_match = re.search(r"(\d+(?:\.\d+)?)%\s+(?:packet )?loss", output)
             if loss_match:
-                self._result["packet_loss"] = int(loss_match.group(1))
+                self._result["packet_loss"] = int(float(loss_match.group(1)))
                 loss_pct = self._result["packet_loss"]
                 kind = "success" if loss_pct == 0 else ("warn" if loss_pct < 50 else "error")
                 self._emit(f"Packet loss: {loss_pct}%", kind)
@@ -161,9 +167,21 @@ class NetDiagThread(QThread):
     def _do_traceroute(self, target: str):
         self._emit("Running traceroute (max 20 hops)...", "info")
         hops = []
+        if not net.direct_allowed():
+            self._emit("Traceroute skipped: it cannot be proxied and would reveal your IP.", "warn")
+            return
+        if _WIN:
+            cmd = ["tracert", "-h", "20", "-w", "2000", target]
+        elif shutil.which("traceroute"):
+            cmd = ["traceroute", "-m", "20", "-w", "2", target]
+        elif shutil.which("tracepath"):
+            cmd = ["tracepath", "-m", "20", target]
+        else:
+            self._emit("traceroute/tracepath not installed (sudo apt install traceroute).", "error")
+            return
         try:
             proc = subprocess.run(
-                ["traceroute", "-m", "20", "-w", "2", target],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=60,
@@ -187,11 +205,7 @@ class NetDiagThread(QThread):
         open_ports = []
         for port in SCAN_PORTS:
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(1.0)
-                result = sock.connect_ex((ip, port))
-                sock.close()
-                if result == 0:
+                if net.tcp_port_open(ip, port, 2.0 if net.proxy_active() else 1.0):
                     proto = PORT_NAMES.get(port, "?")
                     open_ports.append(port)
                     self._emit(f"  OPEN  {port:5d}/tcp  {proto}", "success")
@@ -212,23 +226,35 @@ class NetDiagThread(QThread):
         banners = {}
         for port in open_ports:
             try:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.settimeout(2.0)
-                sock.connect((ip, port))
+                sock = net.create_connection((ip, port), timeout=4.0)
+                sock.settimeout(2.5)
                 # Send a minimal probe to prompt a banner
-                if port == 80:
+                if port in (80, 8080):
                     sock.sendall(b"HEAD / HTTP/1.0\r\nHost: " + ip.encode() + b"\r\n\r\n")
-                elif port == 443:
-                    sock.close()
-                    banners[port] = "(SSL — use HTTPS)"
-                    self._emit(f"  Port {port}: (SSL)", "data")
-                    continue
-                else:
-                    sock.sendall(b"\r\n")
-
+                elif port in (443, 8443):
+                    import ssl as _ssl
+                    ctx = _ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = _ssl.CERT_NONE
+                    tls = ctx.wrap_socket(sock, server_hostname=self.target)
+                    tls.sendall(b"HEAD / HTTP/1.0\r\nHost: " + self.target.encode() + b"\r\n\r\n")
+                    sock = tls
                 banner_bytes = b""
+                if port not in (80, 443, 8080, 8443):
+                    # Most services (SSH, FTP, SMTP, POP, IMAP) speak first
+                    try:
+                        sock.settimeout(2.5)
+                        banner_bytes = sock.recv(1024)
+                    except Exception:
+                        banner_bytes = b""
+                    if not banner_bytes:
+                        try:
+                            sock.sendall(b"\r\n")
+                        except Exception:
+                            pass
+
                 try:
-                    while True:
+                    while not banner_bytes or port in (80, 443, 8080, 8443):
                         chunk = sock.recv(1024)
                         if not chunk:
                             break

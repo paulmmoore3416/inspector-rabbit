@@ -3,6 +3,7 @@ Inspector Rabbit - Report Generator
 Export OSINT findings to HTML, JSON, and PDF
 """
 
+import html
 import json
 import os
 import datetime
@@ -88,11 +89,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+class Safe(str):
+    """Marks a string as already-escaped HTML."""
+
+
+def _e(value) -> str:
+    """Escape untrusted data (scraped titles, WHOIS fields, banners...)."""
+    if isinstance(value, Safe):
+        return value
+    return html.escape('' if value is None else str(value), quote=True)
+
+
+def _link(url: str) -> Safe:
+    u = str(url or '')
+    if not u.lower().startswith(('http://', 'https://')):
+        return Safe(_e(u))
+    return Safe(f'<a class="url-link" href="{_e(u)}" target="_blank" rel="noopener noreferrer">{_e(u)}</a>')
+
+
 def _make_table(headers: List[str], rows: List[List[str]]) -> str:
-    th = ''.join(f'<th>{h}</th>' for h in headers)
+    th = ''.join(f'<th>{_e(h)}</th>' for h in headers)
     trs = ''
     for row in rows:
-        tds = ''.join(f'<td>{cell}</td>' for cell in row)
+        tds = ''.join(f'<td>{_e(cell)}</td>' for cell in row)
         trs += f'<tr>{tds}</tr>'
     return f'<table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>'
 
@@ -113,9 +132,9 @@ def generate_username_report(username: str, results: list) -> str:
 
     rows = []
     for r in sorted(results, key=lambda x: (not x.found, x.site)):
-        status = '<span class="status-found">FOUND</span>' if r.found else '<span class="status-not-found">NOT FOUND</span>'
-        url = f'<a class="url-link" href="{r.url}" target="_blank">{r.url}</a>' if r.found else r.url
-        err = f'<span style="color:#8b949e">{r.error}</span>' if r.error else ''
+        status = Safe('<span class="status-found">FOUND</span>') if r.found else Safe('<span class="status-not-found">NOT FOUND</span>')
+        url = _link(r.url) if r.found else r.url
+        err = Safe(f'<span style="color:#8b949e">{_e(r.error)}</span>') if r.error else ''
         rows.append([r.site, r.category, status, url, f'{r.response_time}ms', err])
 
     table = _make_table(['Site', 'Category', 'Status', 'URL', 'Response', 'Error'], rows)
@@ -126,14 +145,14 @@ def generate_username_report(username: str, results: list) -> str:
       <div class="section-body">{stat_html}</div>
     </div>
     <div class="section">
-      <div class="section-header"><h2>Results for @{username}</h2></div>
+      <div class="section-header"><h2>Results for @{_e(username)}</h2></div>
       <div class="section-body">{table}</div>
     </div>
     '''
 
     return HTML_TEMPLATE.format(
-        title=f"@{username}",
-        timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+        title=_e(f"@{username}"),
+        timestamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
         module='Username Search',
         content=content
     )
@@ -154,7 +173,7 @@ def generate_domain_report(result) -> str:
             ['Email', w.registrant_email],
             ['Country', w.registrant_country],
             ['Status', ', '.join(w.status[:3])],
-            ['Name Servers', '<br>'.join(w.name_servers[:4])],
+            ['Name Servers', Safe('<br>'.join(_e(n) for n in w.name_servers[:4]))],
         ]
         content += f'''
         <div class="section">
@@ -164,7 +183,7 @@ def generate_domain_report(result) -> str:
 
     # DNS Records
     if result.dns_records:
-        rows = [[r.record_type, f'<code>{r.value}</code>', str(r.ttl)] for r in result.dns_records]
+        rows = [[r.record_type, Safe(f'<code>{_e(r.value)}</code>'), str(r.ttl)] for r in result.dns_records]
         content += f'''
         <div class="section">
           <div class="section-header"><h2>DNS Records</h2><span class="badge">{len(result.dns_records)}</span></div>
@@ -180,7 +199,7 @@ def generate_domain_report(result) -> str:
                 ['Issuer', str(s.issuer)],
                 ['Valid From', s.not_before],
                 ['Valid Until', s.not_after],
-                ['SANs', '<br>'.join(s.san[:10])],
+                ['SANs', Safe('<br>'.join(_e(x) for x in s.san[:10]))],
                 ['Serial', s.serial_number],
             ]
             content += f'''
@@ -200,7 +219,7 @@ def generate_domain_report(result) -> str:
 
     # Technologies
     if result.technologies:
-        tags = ''.join(f'<span class="tag">{t}</span>' for t in result.technologies)
+        tags = ''.join(f'<span class="tag">{_e(t)}</span>' for t in result.technologies)
         content += f'''
         <div class="section">
           <div class="section-header"><h2>Detected Technologies</h2></div>
@@ -208,8 +227,8 @@ def generate_domain_report(result) -> str:
         </div>'''
 
     return HTML_TEMPLATE.format(
-        title=result.domain,
-        timestamp=datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC'),
+        title=_e(result.domain),
+        timestamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC'),
         module='Domain Intelligence',
         content=content
     )
@@ -223,14 +242,14 @@ def save_json_report(data: Any, filepath: str) -> str:
             return list(obj)
         return str(obj)
 
-    with open(filepath, 'w') as f:
-        json.dump(data, f, indent=2, default=default_handler)
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, default=default_handler, ensure_ascii=False)
     return filepath
 
 
-def save_html_report(html: str, filepath: str) -> str:
-    with open(filepath, 'w') as f:
-        f.write(html)
+def save_html_report(html_doc: str, filepath: str) -> str:
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(html_doc)
     return filepath
 
 
@@ -266,7 +285,7 @@ def generate_pdf_report(html: str, filepath: str) -> str:
         story.append(Paragraph("🐇 Inspector Rabbit OSINT Report", title_style))
         story.append(Spacer(1, 0.2*inch))
         story.append(Paragraph(
-            f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"Generated: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             normal_style
         ))
         story.append(Spacer(1, 0.3*inch))

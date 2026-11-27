@@ -16,38 +16,16 @@ from PyQt6.QtGui import QFont
 from .components import apply_page_header_style
 
 
-SETTINGS_FILE = os.path.expanduser("~/.inspector_rabbit_settings.json")
-
-DEFAULT_SETTINGS = {
-    'shodan_api_key': '',
-    'hibp_api_key': '',
-    'max_threads': 20,
-    'request_timeout': 10,
-    'crawl_delay': 0.5,
-    'max_crawl_pages': 50,
-    'max_crawl_depth': 3,
-    'auto_graph': True,
-    'show_found_only': False,
-    'dork_engine': 'DuckDuckGo',
-    'dork_delay': 2.0,
-}
+from ..modules.config import SETTINGS_FILE, DEFAULT_SETTINGS, load_settings, save_settings  # noqa: F401
+from ..modules import net
+from PyQt6.QtCore import QThread
 
 
-def load_settings() -> dict:
-    try:
-        with open(SETTINGS_FILE, 'r') as f:
-            saved = json.load(f)
-            return {**DEFAULT_SETTINGS, **saved}
-    except Exception:
-        return DEFAULT_SETTINGS.copy()
+class _ExitCheckThread(QThread):
+    done = pyqtSignal(dict)
 
-
-def save_settings(settings: dict):
-    try:
-        with open(SETTINGS_FILE, 'w') as f:
-            json.dump(settings, f, indent=2)
-    except Exception as e:
-        pass
+    def run(self):
+        self.done.emit(net.exit_ip_check())
 
 
 class ApiKeyField(QFrame):
@@ -192,7 +170,98 @@ class SettingsWidget(QWidget):
         )
         api_grid_layout.addWidget(self.hibp_key)
 
+        self.github_token = ApiKeyField(
+            "GitHub Token (code search, higher rate limits)",
+            "ghp_… or github_pat_… (no scopes needed)",
+            "https://github.com/settings/personal-access-tokens"
+        )
+        api_grid_layout.addWidget(self.github_token)
+
+        self.intelx_key = ApiKeyField(
+            "Intelligence X API Key (free tier)",
+            "IntelX key for leak/darknet archive search",
+            "https://intelx.io/account?tab=developer"
+        )
+        api_grid_layout.addWidget(self.intelx_key)
+
+        self.urlscan_key = ApiKeyField(
+            "URLScan.io API Key (optional)",
+            "Raises URLScan search limits",
+            "https://urlscan.io/user/profile/"
+        )
+        api_grid_layout.addWidget(self.urlscan_key)
+
+        self.brave_key = ApiKeyField(
+            "Brave Search API Key (dork execution)",
+            "Free plan: 2,000 queries/month",
+            "https://brave.com/search/api/"
+        )
+        api_grid_layout.addWidget(self.brave_key)
+
+        self.google_cse_key = ApiKeyField(
+            "Google Programmable Search API Key",
+            "100 free queries/day",
+            "https://developers.google.com/custom-search/v1/introduction"
+        )
+        api_grid_layout.addWidget(self.google_cse_key)
+
+        self.google_cse_cx = ApiKeyField(
+            "Google Programmable Search Engine ID (cx)",
+            "Search engine ID set to 'Search the entire web'",
+            "https://programmablesearchengine.google.com/controlpanel/all"
+        )
+        api_grid_layout.addWidget(self.google_cse_cx)
+
         layout.addLayout(api_grid_layout)
+
+        # ===== Network Privacy =====
+        layout.addWidget(self._section_header("🧅 Network Privacy (Tor / Proxy)"))
+        net_frame = self._card_frame()
+        net_layout = QVBoxLayout(net_frame)
+        net_layout.setContentsMargins(16, 16, 16, 16)
+        net_layout.setSpacing(10)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Route lookups through:"))
+        mode_row.addStretch()
+        self.proxy_mode = QComboBox()
+        self.proxy_mode.addItem("Direct (no proxy)", "off")
+        self.proxy_mode.addItem("Tor service (127.0.0.1:9050)", "tor")
+        self.proxy_mode.addItem("Tor Browser (127.0.0.1:9150)", "tor-browser")
+        self.proxy_mode.addItem("Custom proxy…", "custom")
+        self.proxy_mode.setFixedWidth(260)
+        mode_row.addWidget(self.proxy_mode)
+        net_layout.addLayout(mode_row)
+
+        self.proxy_url = QLineEdit()
+        self.proxy_url.setPlaceholderText("socks5h://127.0.0.1:1080  or  http://user:pass@host:8080")
+        self.proxy_url.setFixedHeight(34)
+        net_layout.addWidget(self.proxy_url)
+
+        self.kill_switch = QCheckBox("Kill switch — block every lookup if the proxy is down (never fall back to your real IP)")
+        net_layout.addWidget(self.kill_switch)
+        self.allow_direct = QCheckBox("Allow direct traffic when proxied (ping, traceroute, SMTP checks, port-43 WHOIS)")
+        net_layout.addWidget(self.allow_direct)
+
+        hint = QLabel("When proxied, DNS goes over HTTPS through the proxy and TCP checks are tunnelled "
+                      "via SOCKS. Tailscale alone does not hide your IP unless you use an exit node.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #8b949e; font-size: 11px;")
+        net_layout.addWidget(hint)
+
+        test_row = QHBoxLayout()
+        self.test_btn = QPushButton("🔎 Test connection (save first)")
+        self.test_btn.setFixedHeight(32)
+        self.test_btn.clicked.connect(self._test_connection)
+        test_row.addWidget(self.test_btn)
+        self.net_status = QLabel(net.describe())
+        self.net_status.setWordWrap(True)
+        self.net_status.setStyleSheet("color: #c9d1d9; font-size: 12px;")
+        test_row.addWidget(self.net_status, 1)
+        net_layout.addLayout(test_row)
+
+        self.proxy_mode.currentIndexChanged.connect(self._sync_proxy_ui)
+        layout.addWidget(net_frame)
 
         # ===== Username Checker =====
         layout.addWidget(self._section_header("👤 Username Checker"))
@@ -238,7 +307,7 @@ class SettingsWidget(QWidget):
         engine_row.addWidget(QLabel("Default search engine:"))
         engine_row.addStretch()
         self.dork_engine = QComboBox()
-        self.dork_engine.addItems(["DuckDuckGo", "Bing"])
+        self.dork_engine.addItems(["Auto", "Bing", "DuckDuckGo"])
         self.dork_engine.setFixedWidth(140)
         engine_row.addWidget(self.dork_engine)
         dork_layout.addLayout(engine_row)
@@ -302,11 +371,12 @@ class SettingsWidget(QWidget):
         about_html.setStyleSheet("QTextEdit { background: transparent; border: none; color: #8b949e; }")
         about_html.setHtml("""
         <div style='color:#c9d1d9;'>
-        <b style='color:#00f5ff;'>🐇 Inspector Rabbit v1.0.0</b><br>
+        <b style='color:#00f5ff;'>🐇 Inspector Rabbit v1.6.0</b><br>
         Advanced Open Source Intelligence Suite<br><br>
         <span style='color:#8b949e; font-size:11px;'>
         Inspired by: Sherlock, Maltego, SpiderFoot, Shodan, Recon-ng, Google Dorks<br>
-        Built with: Python, PyQt6, aiohttp, dnspython, python-whois<br><br>
+        Built with: Python, PyQt6, requests, dnspython, phonenumbers, Pillow, pypdf<br>
+        Site rules: Sherlock Project (MIT) · Disposable domains: CC0 list<br><br>
         ⚠️ For educational and authorized security research only.
         </span>
         </div>
@@ -338,10 +408,22 @@ class SettingsWidget(QWidget):
         s = self._settings
         self.shodan_key.set_value(s.get('shodan_api_key', ''))
         self.hibp_key.set_value(s.get('hibp_api_key', ''))
+        self.github_token.set_value(s.get('github_token', ''))
+        self.intelx_key.set_value(s.get('intelx_api_key', ''))
+        self.urlscan_key.set_value(s.get('urlscan_api_key', ''))
+        self.brave_key.set_value(s.get('brave_api_key', ''))
+        self.google_cse_key.set_value(s.get('google_cse_key', ''))
+        self.google_cse_cx.set_value(s.get('google_cse_cx', ''))
+        idx = self.proxy_mode.findData(s.get('proxy_mode', 'off'))
+        self.proxy_mode.setCurrentIndex(max(idx, 0))
+        self.proxy_url.setText(s.get('proxy_url', ''))
+        self.kill_switch.setChecked(bool(s.get('kill_switch', False)))
+        self.allow_direct.setChecked(bool(s.get('allow_direct_when_proxied', False)))
+        self._sync_proxy_ui()
         self.max_threads.setValue(s.get('max_threads', 20))
         self.request_timeout.setValue(s.get('request_timeout', 10))
         self.auto_graph_check.setChecked(s.get('auto_graph', True))
-        idx = self.dork_engine.findText(s.get('dork_engine', 'DuckDuckGo'))
+        idx = self.dork_engine.findText(s.get('dork_engine', 'Auto'))
         if idx >= 0:
             self.dork_engine.setCurrentIndex(idx)
         self.dork_delay.setValue(s.get('dork_delay', 2.0))
@@ -349,8 +431,51 @@ class SettingsWidget(QWidget):
         self.crawl_max_depth.setValue(s.get('max_crawl_depth', 3))
         self.crawl_delay.setValue(s.get('crawl_delay', 0.5))
 
+    def _sync_proxy_ui(self):
+        mode = self.proxy_mode.currentData()
+        self.proxy_url.setVisible(mode == 'custom')
+        proxied = mode != 'off'
+        self.kill_switch.setEnabled(proxied)
+        self.allow_direct.setEnabled(proxied)
+
+    def _test_connection(self):
+        self.test_btn.setEnabled(False)
+        self.net_status.setText(f"Testing… ({net.describe()})")
+        self._exit_thread = _ExitCheckThread()
+        self._exit_thread.done.connect(self._on_exit_check)
+        self._exit_thread.start()
+
+    def _on_exit_check(self, r: dict):
+        self.test_btn.setEnabled(True)
+        if r.get('error'):
+            self.net_status.setText(f"❌ {r['error']}")
+            self.net_status.setStyleSheet("color: #f85149; font-size: 12px;")
+            return
+        if r.get('is_tor'):
+            txt, col = f"✅ Traffic exits via Tor ({r['ip']})", "#3fb950"
+        elif net.proxy_active():
+            txt, col = f"⚠️ Proxied, exit IP {r['ip']} (not a Tor exit)", "#e3b341"
+        else:
+            txt, col = f"⚠️ Direct connection — targets see your real IP {r['ip']}", "#e3b341"
+        self.net_status.setText(txt)
+        self.net_status.setStyleSheet(f"color: {col}; font-size: 12px;")
+
     def _save_settings(self):
+        base = load_settings()
+        base.update({
+            'github_token': self.github_token.get_value(),
+            'intelx_api_key': self.intelx_key.get_value(),
+            'urlscan_api_key': self.urlscan_key.get_value(),
+            'brave_api_key': self.brave_key.get_value(),
+            'google_cse_key': self.google_cse_key.get_value(),
+            'google_cse_cx': self.google_cse_cx.get_value(),
+            'proxy_mode': self.proxy_mode.currentData(),
+            'proxy_url': self.proxy_url.text().strip(),
+            'kill_switch': self.kill_switch.isChecked(),
+            'allow_direct_when_proxied': self.allow_direct.isChecked(),
+        })
         self._settings = {
+            **base,
             'shodan_api_key': self.shodan_key.get_value(),
             'hibp_api_key': self.hibp_key.get_value(),
             'max_threads': self.max_threads.value(),
@@ -362,7 +487,13 @@ class SettingsWidget(QWidget):
             'max_crawl_depth': self.crawl_max_depth.value(),
             'crawl_delay': self.crawl_delay.value(),
         }
-        save_settings(self._settings)
+        try:
+            save_settings(self._settings)
+        except OSError as exc:
+            QMessageBox.warning(self, "Settings", f"Could not save settings: {exc}")
+            return
+        net.configure(self._settings)
+        self.net_status.setText(net.describe())
         self.settings_changed.emit(self._settings)
 
         msg = QMessageBox(self)

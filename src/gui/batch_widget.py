@@ -429,7 +429,7 @@ class BatchWidget(QWidget):
         self.run_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
 
-        self._thread = BatchProcessorThread(targets, module_key)
+        self._thread = BatchProcessorThread(targets, module_key, getattr(self, "_settings", {}))
         self._thread.job_update.connect(self._on_job_update)
         self._thread.progress.connect(self._on_progress)
         self._thread.done.connect(self._on_done)

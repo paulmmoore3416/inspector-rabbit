@@ -18,7 +18,8 @@ from PyQt6.QtGui import QFont, QColor
 from .components import apply_page_header_style
 
 
-TIMELINE_FILE = os.path.expanduser("~/.inspector_rabbit_timeline.json")
+from ..modules.config import data_path
+TIMELINE_FILE = data_path(".inspector_rabbit_timeline.json")
 
 EVENT_TYPES = {
     'username': ('👤', '#a78bfa'),

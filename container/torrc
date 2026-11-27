@@ -1,0 +1,6 @@
+# Tor client for Inspector Rabbit (runs inside the container only)
+SocksPort 127.0.0.1:9050 IsolateDestAddr
+DataDirectory /tmp/tor-data
+Log notice file /tmp/tor.log
+AvoidDiskWrites 1
+ClientOnly 1

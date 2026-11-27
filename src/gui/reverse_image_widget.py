@@ -40,13 +40,8 @@ class ReverseImageThread(QThread):
         try:
             if self._is_url:
                 self.progress.emit(f"Fetching image from URL...")
-                resp = requests.get(self._source, headers=HEADERS, timeout=15, stream=True)
-                resp.raise_for_status()
-                data = b''
-                for chunk in resp.iter_content(65536):
-                    data += chunk
-                    if len(data) > 50 * 1024 * 1024:
-                        break
+                from ..modules.metadata_extractor import download
+                data, _fname = download(self._source)
                 self.progress.emit(f"Downloaded {len(data) // 1024} KB")
                 self.image_ready.emit(data)
                 self.progress.emit("Extracting EXIF metadata...")
@@ -70,16 +65,7 @@ class ReverseImageThread(QThread):
 
     def _result_to_dict(self, result) -> dict:
         """Convert MetadataResult to a plain dict for signal emission."""
-        return {
-            'filename': result.filename,
-            'file_type': result.file_type,
-            'file_size': result.file_size,
-            'exif': result.exif_data,
-            'gps': result.gps_data,
-            'warnings': result.warnings,
-            'error': result.error,
-            'raw_tags': result.raw_tags,
-        }
+        return result.to_dict()
 
 
 class ReverseImageWidget(QWidget):

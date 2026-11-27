@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Optional
 
 
-CASES_DIR = Path.home() / ".inspector_rabbit_cases"
+from .config import data_path
+CASES_DIR = Path(data_path(".inspector_rabbit_cases"))
 
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -42,7 +43,11 @@ class Case:
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
 def _ensure_dir() -> None:
-    CASES_DIR.mkdir(parents=True, exist_ok=True)
+    CASES_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(CASES_DIR, 0o700)
+    except OSError:
+        pass
 
 
 def _case_path(case_id: str) -> Path:

@@ -1,43 +1,41 @@
 """
 Inspector Rabbit - IP Intelligence Module
-Geolocation, ASN, reverse DNS, blacklist checks, open ports, Shodan
+Geolocation, ASN, reverse DNS, RDAP ownership/abuse contacts, DNS blacklist
+checks (with resolver-refusal detection), TCP port checks, and Shodan /
+Shodan InternetDB exposure data. IPv4 and IPv6.
 """
 
-import socket
-import time
+import ipaddress
 import concurrent.futures
 from typing import Dict, List, Optional
 from dataclasses import dataclass, field
 
 import requests
-import dns.resolver
-import dns.reversename
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
+from . import net
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36'
-}
+HEADERS = {'User-Agent': net.TOOL_UA}
 
-# Common RBL (Real-time Blackhole Lists) for spam/abuse checking
+# DNSBLs that answer public queries. (SORBS shut down in 2024.)
 RBLS = [
     'zen.spamhaus.org',
     'bl.spamcop.net',
-    'dnsbl.sorbs.net',
     'b.barracudacentral.org',
     'dnsbl-1.uceprotect.net',
     'psbl.surriel.com',
     'all.s5h.net',
     'ix.dnsbl.manitu.net',
+    'dnsbl.dronebl.org',
 ]
 
-# Common ports to scan
 COMMON_PORTS = [
     (21, 'FTP'), (22, 'SSH'), (23, 'Telnet'), (25, 'SMTP'),
     (53, 'DNS'), (80, 'HTTP'), (110, 'POP3'), (143, 'IMAP'),
-    (443, 'HTTPS'), (445, 'SMB'), (3306, 'MySQL'), (3389, 'RDP'),
-    (5432, 'PostgreSQL'), (6379, 'Redis'), (8080, 'HTTP-Alt'),
-    (8443, 'HTTPS-Alt'), (27017, 'MongoDB'), (9200, 'Elasticsearch'),
+    (443, 'HTTPS'), (445, 'SMB'), (993, 'IMAPS'), (995, 'POP3S'),
+    (1433, 'MSSQL'), (3306, 'MySQL'), (3389, 'RDP'), (5432, 'PostgreSQL'),
+    (5900, 'VNC'), (6379, 'Redis'), (8080, 'HTTP-Alt'), (8443, 'HTTPS-Alt'),
+    (9200, 'Elasticsearch'), (27017, 'MongoDB'),
 ]
 
 
@@ -57,6 +55,7 @@ class IpGeoInfo:
     mobile: bool = False
     proxy: bool = False
     hosting: bool = False
+    source: str = ""
     error: str = ""
 
 
@@ -64,158 +63,249 @@ class IpGeoInfo:
 class IpIntelResult:
     target: str = ""
     resolved_ip: str = ""
+    ip_version: int = 4
+    ip_scope: str = ""
     reverse_dns: List[str] = field(default_factory=list)
     geo: Optional[IpGeoInfo] = None
     open_ports: List[Dict] = field(default_factory=list)
     blacklists: Dict[str, bool] = field(default_factory=dict)
+    blacklist_notes: Dict[str, str] = field(default_factory=dict)
     shodan_data: Dict = field(default_factory=dict)
+    rdap: Dict = field(default_factory=dict)
     whois_raw: str = ""
     abuse_contacts: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)
     error: str = ""
 
 
 def resolve_to_ip(target: str) -> str:
-    """Resolve hostname to IP if needed"""
-    import re
-    ip_re = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
-    target = target.strip().lower()
-    target = target.replace('https://', '').replace('http://', '').split('/')[0]
-    if ip_re.match(target):
-        return target
+    return net.resolve_host(target)
+
+
+def ip_scope(ip: str) -> str:
     try:
-        return socket.gethostbyname(target)
-    except Exception:
-        return ""
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return 'invalid'
+    if net.is_tailscale(ip):
+        return 'tailscale/CGNAT (100.64.0.0/10)'
+    for attr, label in [('is_loopback', 'loopback'), ('is_private', 'private (RFC1918)'),
+                        ('is_link_local', 'link-local'), ('is_multicast', 'multicast'),
+                        ('is_reserved', 'reserved')]:
+        if getattr(a, attr):
+            return label
+    return 'public'
 
 
 def get_geolocation(ip: str) -> IpGeoInfo:
-    """Get geolocation via ip-api.com (free, 45 req/min)"""
+    """ip-api.com (free, 45 req/min), falling back to ipwho.is."""
     geo = IpGeoInfo(ip=ip)
     try:
         resp = requests.get(
             f"http://ip-api.com/json/{ip}",
-            params={'fields': 'status,message,country,countryCode,region,regionName,city,lat,lon,isp,org,as,timezone,mobile,proxy,hosting'},
-            timeout=8
-        )
-        data = resp.json()
-        if data.get('status') == 'success':
-            geo.country = data.get('country', '')
-            geo.country_code = data.get('countryCode', '')
-            geo.region = data.get('regionName', '')
-            geo.city = data.get('city', '')
-            geo.lat = data.get('lat', 0.0)
-            geo.lon = data.get('lon', 0.0)
-            geo.isp = data.get('isp', '')
-            geo.org = data.get('org', '')
-            geo.asn = data.get('as', '')
-            geo.timezone = data.get('timezone', '')
-            geo.mobile = data.get('mobile', False)
-            geo.proxy = data.get('proxy', False)
-            geo.hosting = data.get('hosting', False)
+            params={'fields': 'status,message,country,countryCode,regionName,city,lat,lon,'
+                              'isp,org,as,timezone,mobile,proxy,hosting'},
+            headers=HEADERS, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('status') == 'success':
+                geo.country = data.get('country', '')
+                geo.country_code = data.get('countryCode', '')
+                geo.region = data.get('regionName', '')
+                geo.city = data.get('city', '')
+                geo.lat = data.get('lat', 0.0)
+                geo.lon = data.get('lon', 0.0)
+                geo.isp = data.get('isp', '')
+                geo.org = data.get('org', '')
+                geo.asn = data.get('as', '')
+                geo.timezone = data.get('timezone', '')
+                geo.mobile = bool(data.get('mobile', False))
+                geo.proxy = bool(data.get('proxy', False))
+                geo.hosting = bool(data.get('hosting', False))
+                geo.source = 'ip-api.com'
+                return geo
+            geo.error = data.get('message', 'lookup failed')
         else:
-            geo.error = data.get('message', 'Unknown error')
+            geo.error = f"ip-api.com HTTP {resp.status_code}"
     except Exception as e:
-        geo.error = str(e)
+        geo.error = f"ip-api.com: {e}"
+
+    try:
+        r = requests.get(f"https://ipwho.is/{ip}", headers=HEADERS, timeout=10)
+        d = r.json()
+        if d.get('success'):
+            conn = d.get('connection', {}) or {}
+            geo.country = d.get('country', '')
+            geo.country_code = d.get('country_code', '')
+            geo.region = d.get('region', '')
+            geo.city = d.get('city', '')
+            geo.lat = d.get('latitude', 0.0)
+            geo.lon = d.get('longitude', 0.0)
+            geo.isp = conn.get('isp', '')
+            geo.org = conn.get('org', '')
+            geo.asn = f"AS{conn.get('asn')} {conn.get('org', '')}".strip() if conn.get('asn') else ''
+            geo.timezone = (d.get('timezone') or {}).get('id', '')
+            geo.source = 'ipwho.is'
+            geo.error = ''
+    except Exception:
+        pass
     return geo
 
 
 def get_reverse_dns(ip: str) -> List[str]:
-    results = []
-    try:
-        resolver = dns.resolver.Resolver()
-        resolver.timeout = 5
-        addr = dns.reversename.from_address(ip)
-        answers = resolver.resolve(addr, 'PTR')
-        for r in answers:
-            results.append(str(r))
-    except Exception:
-        pass
-    return results
+    return net.reverse_dns(ip)
 
 
-def check_blacklists(ip: str) -> Dict[str, bool]:
-    """Check IP against DNS blacklists"""
-    # Reverse the IP for DNSBL lookup
-    reversed_ip = '.'.join(reversed(ip.split('.')))
-    results = {}
+def _dnsbl_query_name(ip: str, rbl: str) -> str:
+    a = ipaddress.ip_address(ip)
+    if a.version == 4:
+        return '.'.join(reversed(ip.split('.'))) + '.' + rbl
+    nibbles = a.exploded.replace(':', '')
+    return '.'.join(reversed(nibbles)) + '.' + rbl
+
+
+def check_blacklists(ip: str):
+    """
+    Returns ({rbl: listed_bool}, {rbl: note}).
+    Only 127.0.0.2-127.0.0.254 style answers count as listings. Spamhaus and
+    others answer 127.255.255.x (or nothing) to queries from public resolvers
+    — those are reported as 'refused', never as listed.
+    """
+    results, notes = {}, {}
+    if ipaddress.ip_address(ip).version == 6:
+        rbls = ['zen.spamhaus.org', 'dnsbl.dronebl.org']
+    else:
+        rbls = RBLS
 
     def check_rbl(rbl):
-        try:
-            query = f"{reversed_ip}.{rbl}"
-            resolver = dns.resolver.Resolver()
-            resolver.timeout = 3
-            resolver.resolve(query, 'A')
-            return rbl, True  # Listed
-        except dns.resolver.NXDOMAIN:
-            return rbl, False  # Not listed
-        except Exception:
-            return rbl, None  # Error/timeout
+        q = net.dns_query(_dnsbl_query_name(ip, rbl), 'A', timeout=6)
+        if q.status == 'NXDOMAIN':
+            return rbl, False, ''
+        if q.status in ('NOERROR',) and q.values:
+            codes = [v for v in q.values if v.startswith('127.')]
+            if any(v.startswith('127.255.255.') for v in codes) or not codes:
+                return rbl, None, f"query refused ({', '.join(q.values)}) — list blocks public/open resolvers"
+            return rbl, True, f"listed ({', '.join(codes)})"
+        return rbl, None, q.error or q.status.lower()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(check_rbl, rbl): rbl for rbl in RBLS}
-        for future in concurrent.futures.as_completed(futures):
-            rbl, listed = future.result()
+        for rbl, listed, note in ex.map(check_rbl, rbls):
             if listed is not None:
                 results[rbl] = listed
+            if note:
+                notes[rbl] = note
+    return results, notes
 
-    return results
 
-
-def scan_ports(ip: str, timeout: float = 1.0) -> List[Dict]:
-    """Quick port scan of common ports"""
+def scan_ports(ip: str, timeout: float = 1.5) -> List[Dict]:
+    """TCP connect check of common ports (through SOCKS when proxied)."""
     open_ports = []
 
     def check_port(port, service):
+        if not net.tcp_port_open(ip, port, timeout):
+            return None
+        banner = ''
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            result = sock.connect_ex((ip, port))
-            sock.close()
-            if result == 0:
-                # Try banner grab
-                banner = ""
-                try:
-                    sock2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock2.settimeout(2.0)
-                    sock2.connect((ip, port))
-                    banner = sock2.recv(1024).decode('utf-8', errors='ignore').strip()[:100]
-                    sock2.close()
-                except Exception:
-                    pass
-                return {'port': port, 'service': service, 'state': 'open', 'banner': banner}
+            s = net.create_connection((ip, port), timeout=3)
+            s.settimeout(2.5)
+            if port in (80, 8080):
+                s.sendall(b"HEAD / HTTP/1.0\r\nHost: " + ip.encode() + b"\r\n\r\n")
+            banner = s.recv(512).decode('utf-8', errors='ignore').strip()[:120]
+            s.close()
         except Exception:
             pass
-        return None
+        return {'port': port, 'service': service, 'state': 'open', 'banner': banner}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as ex:
-        futures = [ex.submit(check_port, port, service) for port, service in COMMON_PORTS]
-        for future in concurrent.futures.as_completed(futures):
-            result = future.result()
-            if result:
-                open_ports.append(result)
-
+    workers = 6 if net.proxy_active() else 24
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+        for r in ex.map(lambda p: check_port(*p), COMMON_PORTS):
+            if r:
+                open_ports.append(r)
     return sorted(open_ports, key=lambda x: x['port'])
 
 
-def get_abuse_contacts(ip: str) -> List[str]:
-    """Get abuse contact emails for an IP via RDAP"""
-    contacts = []
+def get_rdap(ip: str) -> Dict:
+    """RDAP via the rdap.org bootstrap (routes to ARIN/RIPE/APNIC/LACNIC/AFRINIC)."""
     try:
-        resp = requests.get(
-            f"https://rdap.arin.net/registry/ip/{ip}",
-            timeout=8, headers={'Accept': 'application/json'}
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            for entity in data.get('entities', []):
-                for role in entity.get('roles', []):
-                    if role == 'abuse':
-                        for vcard in entity.get('vcardArray', [[], []])[1]:
-                            if vcard[0] == 'email':
-                                contacts.append(vcard[3])
+        r = requests.get(f"https://rdap.org/ip/{ip}",
+                         headers={'Accept': 'application/rdap+json', **HEADERS}, timeout=15)
+        if r.status_code != 200:
+            return {'error': f'RDAP HTTP {r.status_code}'}
+        d = r.json()
+        out = {
+            'handle': d.get('handle', ''),
+            'name': d.get('name', ''),
+            'range': f"{d.get('startAddress', '')} - {d.get('endAddress', '')}",
+            'country': d.get('country', ''),
+            'type': d.get('type', ''),
+            'registry': (d.get('port43') or '').replace('whois.', '').upper(),
+            'abuse': [], 'org': '',
+        }
+        for ent in _walk(d.get('entities', [])):
+            roles = ent.get('roles', [])
+            fn = _vcard(ent, 'fn')
+            if ('registrant' in roles or 'administrative' in roles) and fn and not out['org']:
+                out['org'] = fn
+            if 'abuse' in roles:
+                em = _vcard(ent, 'email')
+                if em and em not in out['abuse']:
+                    out['abuse'].append(em)
+        return out
+    except Exception as e:
+        return {'error': f'RDAP error: {e}'}
+
+
+def _walk(entities):
+    for e in entities or []:
+        yield e
+        yield from _walk(e.get('entities'))
+
+
+def _vcard(entity, key):
+    try:
+        for item in entity.get('vcardArray', [None, []])[1]:
+            if item[0] == key:
+                return str(item[3])
     except Exception:
         pass
-    return contacts
+    return ''
+
+
+def get_abuse_contacts(ip: str) -> List[str]:
+    return get_rdap(ip).get('abuse', [])
+
+
+def get_exposure(ip: str, api_key: str = '') -> Dict:
+    if api_key:
+        try:
+            import shodan as shodan_lib
+            api = shodan_lib.Shodan(api_key)
+            host = api.host(ip)
+            vulns = host.get('vulns', [])
+            return {
+                'source': 'Shodan API',
+                'ports': host.get('ports', []),
+                'vulns': sorted(vulns if isinstance(vulns, list) else list(vulns.keys())),
+                'os': host.get('os', ''),
+                'tags': host.get('tags', []),
+                'last_update': host.get('last_update', ''),
+                'hostnames': host.get('hostnames', []),
+                'services': [
+                    {'port': s.get('port'), 'transport': s.get('transport', 'tcp'),
+                     'product': s.get('product', ''), 'version': s.get('version', ''),
+                     'banner': (s.get('data', '') or '')[:100]}
+                    for s in host.get('data', [])[:20]
+                ],
+            }
+        except Exception as e:
+            err = str(e)
+    else:
+        err = ''
+    from .domain_intel import get_internetdb
+    data = get_internetdb(ip)
+    if err and 'error' not in data:
+        data['note'] = f"Shodan API failed ({err[:80]}); showing free InternetDB data"
+    return data
 
 
 class IpIntelThread(QThread):
@@ -224,12 +314,14 @@ class IpIntelThread(QThread):
     error = pyqtSignal(str)
 
     def __init__(self, target: str, shodan_api_key: str = "",
-                 do_port_scan: bool = True, do_blacklists: bool = True):
+                 do_port_scan: bool = True, do_blacklists: bool = True,
+                 do_exposure: bool = True):
         super().__init__()
         self.target = target.strip()
         self.shodan_api_key = shodan_api_key
         self.do_port_scan = do_port_scan
         self.do_blacklists = do_blacklists
+        self.do_exposure = do_exposure
 
     def run(self):
         result = IpIntelResult(target=self.target)
@@ -241,53 +333,38 @@ class IpIntelThread(QThread):
                 self.result_ready.emit(result)
                 return
             result.resolved_ip = ip
+            result.ip_version = ipaddress.ip_address(ip).version
+            result.ip_scope = ip_scope(ip)
+            public = result.ip_scope == 'public'
+            if not public:
+                result.notes.append(f"{ip} is a {result.ip_scope} address — internet lookups skipped")
 
             self.progress.emit(f"Reverse DNS for {ip}...")
             result.reverse_dns = get_reverse_dns(ip)
 
-            self.progress.emit(f"Geolocation lookup...")
-            result.geo = get_geolocation(ip)
+            if public:
+                self.progress.emit("Geolocation lookup...")
+                result.geo = get_geolocation(ip)
 
-            self.progress.emit(f"Fetching abuse contacts...")
-            result.abuse_contacts = get_abuse_contacts(ip)
+                self.progress.emit("RDAP ownership & abuse contacts...")
+                result.rdap = get_rdap(ip)
+                result.abuse_contacts = result.rdap.get('abuse', [])
+                if result.rdap and not result.rdap.get('error'):
+                    result.whois_raw = '\n'.join(f"{k}: {v}" for k, v in result.rdap.items() if v)
 
-            if self.do_blacklists:
-                self.progress.emit(f"Checking {len(RBLS)} blacklists...")
-                result.blacklists = check_blacklists(ip)
+                if self.do_blacklists:
+                    self.progress.emit("Checking DNS blacklists...")
+                    result.blacklists, result.blacklist_notes = check_blacklists(ip)
+
+                if self.do_exposure or self.shodan_api_key:
+                    self.progress.emit("Querying Shodan / InternetDB...")
+                    result.shodan_data = get_exposure(ip, self.shodan_api_key)
 
             if self.do_port_scan:
-                self.progress.emit(f"Scanning {len(COMMON_PORTS)} common ports...")
+                self.progress.emit(f"Checking {len(COMMON_PORTS)} common TCP ports...")
                 result.open_ports = scan_ports(ip)
-
-            if self.shodan_api_key:
-                self.progress.emit(f"Querying Shodan...")
-                try:
-                    import shodan as shodan_lib
-                    api = shodan_lib.Shodan(self.shodan_api_key)
-                    host = api.host(ip)
-                    result.shodan_data = {
-                        'ports': host.get('ports', []),
-                        'vulns': list(host.get('vulns', {}).keys()),
-                        'os': host.get('os', ''),
-                        'tags': host.get('tags', []),
-                        'last_update': host.get('last_update', ''),
-                        'hostnames': host.get('hostnames', []),
-                        'services': [
-                            {
-                                'port': s.get('port'),
-                                'transport': s.get('transport', 'tcp'),
-                                'product': s.get('product', ''),
-                                'version': s.get('version', ''),
-                                'banner': s.get('data', '')[:100],
-                            }
-                            for s in host.get('data', [])[:10]
-                        ]
-                    }
-                except Exception as e:
-                    result.shodan_data = {'error': str(e)}
 
             self.progress.emit("IP intelligence complete.")
             self.result_ready.emit(result)
-
         except Exception as e:
-            self.error.emit(str(e))
+            self.error.emit(f"{type(e).__name__}: {e}")

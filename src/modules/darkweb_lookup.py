@@ -1,13 +1,14 @@
 """
-Inspector Rabbit - Dark Web / Exposure Lookup Module  v1.5.0
+Inspector Rabbit - Dark Web / Exposure Lookup Module  v1.6.0
 
-Sources (all free, no Tor required):
-  1. Ahmia.fi         — public Tor hidden-service search index
-  2. Intelligence X   — leaked-data archive search (free tier)
-  3. psbdmp.ws        — Pastebin dump/paste OSINT
-  4. DarkSearch.io    — dark-web search engine API
-  5. grep.app         — leaked credentials / sensitive data in public GitHub
-  6. URLScan.io       — malicious / suspicious page scan history (domain/email)
+Sources:
+  1. Ahmia.fi            — Tor hidden-service search index (clearnet)
+  2. Intelligence X      — leak/darknet archive (free API key: intelx.io/account?tab=developer)
+  3. Paste sites         — pastebin/rentry/ghostbin/etc via the dork engine
+  4. GitHub code leaks   — GitHub code search (requires GitHub token)
+  5. URLScan.io          — scan history / phishing verdicts (key optional)
+
+Retired: DarkSearch.io and psbdmp.ws (offline), grep.app (browser challenge).
 """
 
 import re
@@ -16,10 +17,9 @@ import warnings
 from datetime import datetime, timezone
 
 import requests
-import urllib3
 
-# Suppress SSL warnings for dark web endpoints with self-signed/expired certs
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from . import net
+from .config import load_settings
 
 try:
     from bs4 import BeautifulSoup
@@ -128,9 +128,8 @@ class DarkWebThread(QThread):
     SOURCE_LIST = [
         "Ahmia.fi",
         "Intelligence X",
-        "Pastebin (psbdmp)",
-        "DarkSearch.io",
-        "grep.app (GitHub)",
+        "Paste sites",
+        "GitHub code leaks",
         "URLScan.io",
     ]
 
@@ -157,8 +156,7 @@ class DarkWebThread(QThread):
         return not self._running
 
     def _src_enabled(self, name: str) -> bool:
-        # Allow partial match for flexibility
-        return any(name in s or s in name for s in self._enabled)
+        return name in self._enabled
 
     # ── main entry ─────────────────────────────────────────────────────────────
 
@@ -194,12 +192,12 @@ class DarkWebThread(QThread):
         self.progress.emit(f"   Query type: {self._qtype}")
         self.progress.emit("")
 
+        self._settings = load_settings()
         checks = [
             ("Ahmia.fi",           self._check_ahmia),
             ("Intelligence X",     self._check_intelx),
-            ("Pastebin (psbdmp)",  self._check_psbdmp),
-            ("DarkSearch.io",      self._check_darksearch),
-            ("grep.app (GitHub)",  self._check_grepapp),
+            ("Paste sites",        self._check_pastes),
+            ("GitHub code leaks",  self._check_github_code),
             ("URLScan.io",         self._check_urlscan),
         ]
 
@@ -214,6 +212,9 @@ class DarkWebThread(QThread):
 
             try:
                 count = fn(q)
+                if count == -2:
+                    self.source_status.emit(source_name, 0, "skipped")
+                    continue
                 sources_checked += 1
                 status = "ok" if count >= 0 else "error"
                 self.source_status.emit(source_name, max(count, 0), status)
@@ -257,308 +258,147 @@ class DarkWebThread(QThread):
         if not _BS4:
             self.progress.emit("  ⚠️  beautifulsoup4 not installed")
             return -1
-
-        count = 0
-        for page in range(1, 3):       # fetch up to 2 pages
-            if self._stopped():
-                break
-            try:
-                params = {"q": query, "page": page}
-                resp = requests.get(
-                    "https://ahmia.fi/search/",
-                    params=params,
-                    headers=HEADERS,
-                    timeout=TIMEOUT_LONG,
-                    verify=False,
-                )
-                if resp.status_code != 200:
-                    self.progress.emit(f"  ↳ Ahmia: HTTP {resp.status_code}")
+        from urllib.parse import parse_qs, urlparse
+        count, seen = 0, set()
+        try:
+            sess = requests.Session()
+            home = sess.get("https://ahmia.fi/", headers=HEADERS, timeout=TIMEOUT_LONG)
+            form = BeautifulSoup(home.text, "html.parser").select_one("form")
+            params = {i.get("name"): i.get("value", "") for i in (form.select("input[type=hidden]") if form else [])
+                      if i.get("name")}
+            params["q"] = query
+            resp = sess.get("https://ahmia.fi/search/", params=params, headers=HEADERS, timeout=TIMEOUT_LONG)
+            if resp.status_code != 200:
+                self.progress.emit(f"  ↳ Ahmia: HTTP {resp.status_code}")
+                return -1
+            if urlparse(resp.url).path in ("", "/"):
+                self.progress.emit("  ↳ Ahmia: search token rejected (site changed its anti-bot form)")
+                return -1
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.select("li.result"):
+                if self._stopped() or count >= 25:
                     break
-
-                soup  = BeautifulSoup(resp.text, "html.parser")
-
-                # Try multiple selectors — Ahmia sometimes changes its HTML
-                items = (
-                    soup.select("li.result") or
-                    soup.select("div.result") or
-                    soup.select("article") or
-                    []
-                )
-
-                if not items:
-                    # Fallback: grab all h4 > a links
-                    for link_tag in soup.select("h4 a")[:15]:
-                        if self._stopped():
-                            break
-                        title   = link_tag.get_text(strip=True)
-                        href    = link_tag.get("href", "")
-                        snippet = ""
-                        parent  = link_tag.find_parent()
-                        if parent:
-                            p_tag = parent.find_next_sibling("p")
-                            if p_tag:
-                                snippet = p_tag.get_text(strip=True)[:200]
-                        if not title:
-                            continue
-                        r = _make_result("Ahmia.fi", title, href, snippet, query)
-                        self._emit(r)
-                        count += 1
-                    break
-
-                for item in items[:12]:
-                    if self._stopped():
-                        break
-                    title_el   = (item.select_one("h4 a") or
-                                  item.select_one("h3 a") or
-                                  item.select_one("a"))
-                    snippet_el = (item.select_one("p.description") or
-                                  item.select_one("p") or
-                                  item.select_one(".description"))
-
-                    title   = title_el.get_text(strip=True) if title_el else ""
-                    href    = title_el.get("href", "") if title_el else ""
-                    snippet = snippet_el.get_text(strip=True)[:200] if snippet_el else ""
-
-                    if not title:
-                        continue
-
-                    r = _make_result("Ahmia.fi", title, href, snippet, query)
-                    self._emit(r)
-                    count += 1
-
-                if len(items) < 5:
-                    break           # no more pages worth fetching
-                time.sleep(0.8)
-
-            except Exception as exc:
-                self.progress.emit(f"  ⚠️  Ahmia page {page} error: {exc}")
-                break
-
-        self.progress.emit(f"  ↳ Ahmia.fi → {count} result(s)")
+                a = item.select_one("h4 a") or item.select_one("a")
+                if not a:
+                    continue
+                href = a.get("href", "")
+                if "redirect_url=" in href:
+                    href = parse_qs(urlparse(href).query).get("redirect_url", [href])[0]
+                onion = urlparse(href).hostname or href
+                if onion in seen:
+                    continue
+                seen.add(onion)
+                title = a.get_text(" ", strip=True)
+                p = item.select_one("p")
+                snippet = p.get_text(" ", strip=True) if p else ""
+                last = item.select_one("span.lastSeen") or item.select_one(".lastSeen")
+                if last:
+                    snippet = f"{snippet}  [last seen {last.get_text(strip=True)}]"
+                self._emit(_make_result("Ahmia.fi", title or onion, href, snippet, query))
+                count += 1
+        except net.ProxyUnavailable as exc:
+            self.progress.emit(f"  ⚠️  {exc}")
+            return -1
+        except Exception as exc:
+            self.progress.emit(f"  ⚠️  Ahmia error: {exc}")
+            return -1
+        self.progress.emit(f"  ↳ Ahmia.fi → {count} unique onion service(s)")
         return count
 
     # ── 2. Intelligence X ─────────────────────────────────────────────────────
 
     def _check_intelx(self, query: str) -> int:
-        self.progress.emit("🔎 Intelligence X — checking leaked data archive…")
-
-        # Try both the v1 and v2 free endpoints
-        endpoints = [
-            ("POST", "https://2.intelx.io/intelligent/search",
-             {"term": query, "maxresults": 20, "media": 0, "sort": 4, "terminate": []}),
-            ("GET",  f"https://intelx.io/api/search/simple?q={requests.utils.quote(query)}&apikey=test-key&limit=20",
-             None),
-        ]
-
-        count = 0
-        for method, url, payload in endpoints:
-            if self._stopped():
-                break
-            try:
-                if method == "POST":
-                    resp = requests.post(url, json=payload, headers=HEADERS, timeout=TIMEOUT_LONG, verify=False)
-                else:
-                    resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT_LONG, verify=False)
-
-                if resp.status_code not in (200, 201):
-                    continue
-
-                data = resp.json()
-                records = (
-                    data.get("records") or
-                    data.get("results") or
-                    data.get("items") or
-                    (data if isinstance(data, list) else [])
-                )
-
-                for rec in records[:20]:
-                    if self._stopped():
-                        break
-                    title   = str(rec.get("name") or rec.get("title") or "")
-                    link    = str(rec.get("storageid") or rec.get("url") or "")
-                    snippet = rec.get("preview") or rec.get("description") or ""
-                    if isinstance(snippet, list):
-                        snippet = " ".join(str(s) for s in snippet)
-                    snippet = str(snippet)[:280]
-
-                    if not title and not snippet:
-                        continue
-
-                    # Build a usable URL when only a storage ID is returned
-                    if link and not link.startswith("http"):
-                        link = f"https://intelx.io/?did={link}"
-
-                    r = _make_result("Intelligence X", title, link, snippet, query)
-                    self._emit(r)
-                    count += 1
-
-                if count > 0:
-                    break   # got results from this endpoint
-
-            except Exception as exc:
-                self.progress.emit(f"  ↳ IntelX endpoint error: {exc}")
-                continue
-
-        self.progress.emit(f"  ↳ Intelligence X → {count} result(s)")
-        return count
-
-    # ── 3. psbdmp.ws ──────────────────────────────────────────────────────────
-
-    def _check_psbdmp(self, query: str) -> int:
-        self.progress.emit("🔎 Pastebin OSINT via psbdmp.ws…")
-        count = 0
+        key = self._settings.get("intelx_api_key", "")
+        if not key:
+            self.progress.emit("ℹ️  Intelligence X skipped — add a free API key in Settings")
+            return -2
+        self.progress.emit("🔎 Intelligence X — searching leak archive…")
+        base = self._settings.get("intelx_api_url") or "https://free.intelx.io"
+        h = {**HEADERS, "x-key": key, "Content-Type": "application/json"}
         try:
-            url  = f"https://psbdmp.ws/api/v3/search/{requests.utils.quote(query)}"
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT_SHORT, verify=False)
-
-            if resp.status_code == 404:
-                self.progress.emit("  ↳ psbdmp: no results")
-                return 0
-
-            data   = resp.json()
-            pastes = data if isinstance(data, list) else data.get("data", [])
-
-            for paste in pastes[:20]:
+            r = requests.post(f"{base}/intelligent/search", headers=h, timeout=TIMEOUT_LONG,
+                              json={"term": query, "maxresults": 25, "media": 0, "sort": 2,
+                                    "timeout": 10, "terminate": []})
+            if r.status_code == 401:
+                self.progress.emit("  ↳ IntelX: API key rejected")
+                return -1
+            if r.status_code == 402:
+                self.progress.emit("  ↳ IntelX: free credits exhausted")
+                return -1
+            if r.status_code != 200:
+                self.progress.emit(f"  ↳ IntelX: HTTP {r.status_code}")
+                return -1
+            sid = r.json().get("id")
+            records = []
+            for _ in range(8):
                 if self._stopped():
                     break
-                paste_id = paste.get("id", "")
-                tags     = paste.get("tags") or paste.get("name") or paste_id or "Untitled paste"
-                snippet  = (paste.get("text") or paste.get("content") or "")[:280]
-                link     = f"https://pastebin.com/{paste_id}" if paste_id else ""
-                size     = paste.get("size") or paste.get("length") or ""
-
-                title = str(tags)
-                if size:
-                    title += f"  ({size} bytes)"
-
-                r = _make_result("Pastebin (psbdmp)", title, link, snippet, query)
-                self._emit(r)
+                time.sleep(1.5)
+                rr = requests.get(f"{base}/intelligent/search/result", headers=h,
+                                  params={"id": sid, "limit": 25}, timeout=TIMEOUT_LONG)
+                if rr.status_code != 200:
+                    break
+                d = rr.json()
+                records.extend(d.get("records") or [])
+                if d.get("status") in (1, 2) or len(records) >= 25:
+                    break
+            count = 0
+            for rec in records[:25]:
+                name = rec.get("name") or rec.get("systemid", "")
+                bucket = rec.get("bucketh") or rec.get("bucket", "")
+                date = (rec.get("date") or "")[:10]
+                link = f"https://intelx.io/?did={rec.get('systemid')}" if rec.get("systemid") else ""
+                self._emit(_make_result("Intelligence X", str(name), link,
+                                        f"Bucket: {bucket}  Date: {date}  Size: {rec.get('size', '')} bytes", query))
                 count += 1
-
+            self.progress.emit(f"  ↳ Intelligence X → {count} record(s)")
+            return count
         except Exception as exc:
-            self.progress.emit(f"  ⚠️  psbdmp.ws error: {exc}")
+            self.progress.emit(f"  ⚠️  IntelX error: {exc}")
             return -1
 
-        self.progress.emit(f"  ↳ psbdmp.ws → {count} result(s)")
-        return count
+    # ── 3. Paste sites (through the dork engine) ─────────────────────────────
 
-    # ── 4. DarkSearch.io ──────────────────────────────────────────────────────
+    PASTE_SITES = ["pastebin.com", "rentry.co", "paste.ee", "ghostbin.cloud", "justpaste.it", "controlc.com"]
 
-    def _check_darksearch(self, query: str) -> int:
-        self.progress.emit("🔎 DarkSearch.io — dark web index…")
-        count = 0
+    def _check_pastes(self, query: str) -> int:
+        from .dorks_engine import search_auto
+        self.progress.emit("🔎 Paste sites — search-engine dorks…")
+        sites = " OR ".join(f"site:{s}" for s in self.PASTE_SITES)
+        res = search_auto(f'({sites}) "{query}"', 20)
+        if not res.results:
+            # OR-groups aren't honoured by every engine; fall back to the biggest site
+            res = search_auto(f'site:pastebin.com "{query}"', 20)
+        if not res.results:
+            self.progress.emit(f"  ↳ Paste sites: {res.error or 'no results'}")
+            return -1 if res.error and res.blocked else 0
+        for r in res.results:
+            self._emit(_make_result("Paste sites", r.get("title", ""), r.get("url", ""),
+                                    r.get("snippet", ""), query))
+        self.progress.emit(f"  ↳ Paste sites → {len(res.results)} result(s) via {res.engine}")
+        return len(res.results)
+
+    # ── 4. GitHub code leaks ─────────────────────────────────────────────────
+
+    def _check_github_code(self, query: str) -> int:
+        from .paste_scanner import search_github_code
+        token = self._settings.get("github_token", "")
+        if not token:
+            self.progress.emit("ℹ️  GitHub code search skipped — add a GitHub token in Settings")
+            return -2
+        self.progress.emit("🔎 GitHub — searching public code for exposed data…")
         try:
-            # Try page 1 and 2
-            for page in range(1, 3):
-                if self._stopped():
-                    break
-                url  = (
-                    f"https://darksearch.io/api/search"
-                    f"?query={requests.utils.quote(query)}&page={page}"
-                )
-                resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT_LONG, verify=False)
-
-                if resp.status_code == 429:
-                    self.progress.emit("  ↳ DarkSearch: rate limited")
-                    break
-                if resp.status_code != 200:
-                    break
-
-                data  = resp.json()
-                items = data.get("data", []) if isinstance(data, dict) else []
-
-                for item in items[:15]:
-                    if self._stopped():
-                        break
-                    title   = str(item.get("title", "") or "")
-                    link    = str(item.get("link", "") or item.get("url", "") or "")
-                    snippet = str(item.get("description", "") or "")[:280]
-
-                    # Some entries have no useful content
-                    if not title and not snippet:
-                        continue
-
-                    r = _make_result("DarkSearch.io", title, link, snippet, query)
-                    self._emit(r)
-                    count += 1
-
-                if len(items) < 5:
-                    break
-                time.sleep(0.6)
-
+            items = search_github_code(f'"{query}"', 25, token=token)
         except Exception as exc:
-            self.progress.emit(f"  ⚠️  DarkSearch.io error: {exc}")
+            self.progress.emit(f"  ⚠️  GitHub: {exc}")
             return -1
-
-        self.progress.emit(f"  ↳ DarkSearch.io → {count} result(s)")
-        return count
-
-    # ── 5. grep.app — leaked credentials in public GitHub ─────────────────────
-
-    def _check_grepapp(self, query: str) -> int:
-        """
-        Searches public GitHub repositories for the query string.
-        Extremely useful for finding accidentally committed credentials,
-        API keys, emails, and passwords in source code.
-        """
-        self.progress.emit("🔎 grep.app — scanning public GitHub repos for exposed data…")
-        count = 0
-        try:
-            url = "https://grep.app/api/search"
-            params = {
-                "q":      query,
-                "regexp": "false",
-                "case":   "false",
-                "results": 20,
-            }
-            resp = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT_LONG, verify=False)
-
-            if resp.status_code != 200:
-                self.progress.emit(f"  ↳ grep.app: HTTP {resp.status_code}")
-                return 0
-
-            data  = resp.json()
-            hits  = data.get("hits", {}).get("hits", [])
-
-            for hit in hits[:20]:
-                if self._stopped():
-                    break
-                src      = hit.get("_source", {})
-                repo_raw = src.get("repo", {}).get("raw", "")
-                path_raw = src.get("path", {}).get("raw", "")
-
-                content  = src.get("content", {})
-                if isinstance(content, dict):
-                    snippet = content.get("snippet", "")
-                    # Strip HTML highlight tags from snippet
-                    snippet = re.sub(r"</?em>", "", snippet)
-                elif isinstance(content, str):
-                    snippet = content[:280]
-                else:
-                    snippet = ""
-
-                title    = f"{repo_raw} / {path_raw}" if repo_raw else path_raw
-                link     = (
-                    f"https://github.com/{repo_raw}/blob/HEAD/{path_raw}"
-                    if repo_raw else ""
-                )
-
-                if not title:
-                    continue
-
-                r = _make_result("grep.app (GitHub)", title, link, snippet, query)
-                # GitHub hits are almost always leaked data → boost to at least medium
-                if r["risk_level"] == "low":
-                    r["risk_level"] = "medium"
-                self._emit(r)
-                count += 1
-
-        except Exception as exc:
-            self.progress.emit(f"  ⚠️  grep.app error: {exc}")
-            return -1
-
-        self.progress.emit(f"  ↳ grep.app → {count} result(s)")
-        return count
+        for it in items:
+            r = _make_result("GitHub code leaks", it["title"], it["url"], it["snippet"], query)
+            if r["risk_level"] == "low":
+                r["risk_level"] = "medium"
+            self._emit(r)
+        self.progress.emit(f"  ↳ GitHub code → {len(items)} file(s)")
+        return len(items)
 
     # ── 6. URLScan.io — suspicious/malicious scan history ─────────────────────
 
@@ -579,15 +419,16 @@ class DarkWebThread(QThread):
         try:
             # Build a targeted query for URLScan
             if self._qtype == "domain":
-                search_q = f"domain:{query}"
-            elif self._qtype == "email":
-                search_q = query
+                search_q = f"domain:{net.clean_host(query)}"
             else:
-                search_q = query
+                search_q = '"' + query.replace('"', '') + '"'
 
             url    = "https://urlscan.io/api/v1/search/"
             params = {"q": search_q, "size": 20}
-            resp   = requests.get(url, params=params, headers=HEADERS, timeout=TIMEOUT_LONG, verify=False)
+            h = dict(HEADERS)
+            if self._settings.get("urlscan_api_key"):
+                h["API-Key"] = self._settings["urlscan_api_key"]
+            resp   = requests.get(url, params=params, headers=h, timeout=TIMEOUT_LONG)
 
             if resp.status_code == 429:
                 self.progress.emit("  ↳ URLScan.io: rate limited — try again later")

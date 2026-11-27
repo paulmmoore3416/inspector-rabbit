@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec for Inspector Rabbit v1.5.0
+# PyInstaller spec for Inspector Rabbit v1.6.0
 # Build command:  pyinstaller inspector_rabbit.spec
 # Output:         dist/InspectorRabbit/InspectorRabbit.exe
 
@@ -13,6 +13,8 @@ datas = [
     # OSINT data
     ("src/data/sites.json",           "src/data"),
     ("src/data/dorks_templates.json", "src/data"),
+    ("src/data/disposable_domains.txt", "src/data"),
+    ("src/data/THIRD_PARTY_LICENSES.txt", "src/data"),
     # App icon / splash assets
     ("assets/favicon.ico",  "assets"),
     ("assets/favicon.png",  "assets"),
@@ -28,9 +30,8 @@ hiddenimports = [
     "PyQt6.QtWidgets",
     "PyQt6.QtNetwork",
     # networking
-    "aiohttp",
-    "aiohttp.connector",
-    "aiohttp.client",
+    "socks",
+    "sockshandler",
     "urllib3",
     "requests",
     "requests.adapters",
@@ -38,6 +39,14 @@ hiddenimports = [
     "dns",
     "dns.resolver",
     "whois",
+    "shodan",
+    "phonenumbers",
+    "phonenumbers.geocoder",
+    "phonenumbers.carrier",
+    "phonenumbers.timezone",
+    "pypdf",
+    "psutil",
+    "cryptography.x509",
     "bs4",
     "lxml",
     "lxml.etree",

@@ -62,11 +62,14 @@ def analyze_phone(phone_input: str, default_region: str = "US") -> PhoneResult:
         )
 
         # Try parsing with region
+        cleaned = phone_input.strip()
+        if cleaned.startswith('00'):
+            cleaned = '+' + cleaned[2:]
         try:
-            num = phonenumbers.parse(phone_input, default_region)
+            num = phonenumbers.parse(cleaned, None if cleaned.startswith('+') else default_region)
         except NumberParseException:
             try:
-                num = phonenumbers.parse(f"+{phone_input.lstrip('+')}", None)
+                num = phonenumbers.parse(f"+{cleaned.lstrip('+')}", None)
             except NumberParseException as e:
                 result.error = str(e)
                 return result
@@ -132,38 +135,33 @@ def analyze_phone(phone_input: str, default_region: str = "US") -> PhoneResult:
         intl = result.formatted_international or phone_input
         national = result.formatted_national or phone_input
 
+        from urllib.parse import quote_plus
+        digits = re.sub(r'\D', '', e164)
+        nat_digits = re.sub(r'\D', '', national)
+        cc = (result.country_iso2 or 'us').lower()
+        quoted = quote_plus(f'"{intl}" OR "{national}" OR "{digits}"')
         result.search_urls = [
-            {
-                'name': 'Google Search',
-                'url': f"https://www.google.com/search?q={e164.replace('+', '%2B')}",
-                'description': 'Search Google for this number'
-            },
-            {
-                'name': 'DuckDuckGo',
-                'url': f"https://duckduckgo.com/?q={e164.replace('+', '%2B')}",
-                'description': 'Search DuckDuckGo'
-            },
-            {
-                'name': 'Truecaller',
-                'url': f"https://www.truecaller.com/search/us/{national.replace(' ', '-').replace('(','').replace(')','').replace('+','')}",
-                'description': 'Check Truecaller directory'
-            },
-            {
-                'name': 'NumLookup',
-                'url': f"https://www.numlookupapi.com/",
-                'description': 'NumLookup API (registration required)'
-            },
-            {
-                'name': 'Whitepages',
-                'url': f"https://www.whitepages.com/phone/{national.replace(' ','').replace('(','').replace(')','').replace('-','')}",
-                'description': 'Search Whitepages'
-            },
-            {
-                'name': 'Social Media Search',
-                'url': f"https://www.google.com/search?q={e164.replace('+', '%2B')}+site:facebook.com+OR+site:instagram.com+OR+site:linkedin.com",
-                'description': 'Find social media profiles with this number'
-            },
+            {'name': 'Google (all formats)', 'url': f"https://www.google.com/search?q={quoted}",
+             'description': 'Search every common formatting of the number'},
+            {'name': 'Bing (all formats)', 'url': f"https://www.bing.com/search?q={quoted}",
+             'description': 'Bing search across formats'},
+            {'name': 'DuckDuckGo', 'url': f"https://duckduckgo.com/?q={quoted}",
+             'description': 'DuckDuckGo search across formats'},
+            {'name': 'Truecaller', 'url': f"https://www.truecaller.com/search/{cc}/{nat_digits}",
+             'description': 'Caller-ID directory (login required)'},
+            {'name': 'Sync.me', 'url': f"https://sync.me/search/?number={digits}",
+             'description': 'Caller-ID directory'},
+            {'name': 'WhatsApp', 'url': f"https://wa.me/{digits}",
+             'description': 'Opens a chat if the number has WhatsApp'},
+            {'name': 'Telegram', 'url': f"https://t.me/+{digits}",
+             'description': 'Shows the profile if the number is public on Telegram'},
+            {'name': 'Social Media Search',
+             'url': f"https://www.google.com/search?q={quote_plus(f'{chr(34)}{intl}{chr(34)} site:facebook.com OR site:instagram.com OR site:linkedin.com OR site:x.com')}",
+             'description': 'Find social media profiles mentioning this number'},
         ]
+        if cc == 'us':
+            result.search_urls.append({'name': 'Whitepages', 'url': f"https://www.whitepages.com/phone/1-{nat_digits}",
+                                       'description': 'US reverse phone lookup'})
 
     except ImportError:
         result.error = "phonenumbers library not installed. Run: pip3 install phonenumbers"

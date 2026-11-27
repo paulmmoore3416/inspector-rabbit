@@ -78,6 +78,7 @@ class BatchJob:
 
 
 class BatchProcessorThread(QThread):
+    """Runs the same lookups as the individual modules, one target at a time."""
     job_update = pyqtSignal(dict)
     progress = pyqtSignal(int, int)
     done = pyqtSignal(list)
@@ -147,188 +148,99 @@ class BatchProcessorThread(QThread):
     # ------------------------------------------------------------------
 
     def _check_domain(self, domain: str) -> dict:
-        result: dict = {"domain": domain, "reachable": False, "ip_addresses": [], "status_code": None}
-
-        # DNS resolve
-        try:
-            addrs = socket.getaddrinfo(domain, None)
-            ips = list({a[4][0] for a in addrs})
-            result["ip_addresses"] = ips
-        except Exception as exc:
-            result["dns_error"] = str(exc)
-
-        # HTTP HEAD
-        try:
-            resp = requests.head(
-                f"https://{domain}",
-                headers=HEADERS,
-                timeout=8,
-                allow_redirects=True,
-                verify=False,
-            )
-            result["status_code"] = resp.status_code
-            result["reachable"] = resp.status_code < 500
-            result["final_url"] = resp.url
-        except requests.exceptions.SSLError:
-            try:
-                resp = requests.head(
-                    f"http://{domain}",
-                    headers=HEADERS,
-                    timeout=8,
-                    allow_redirects=True,
-                )
-                result["status_code"] = resp.status_code
-                result["reachable"] = resp.status_code < 500
-            except Exception as exc2:
-                result["http_error"] = str(exc2)
-        except Exception as exc:
-            result["http_error"] = str(exc)
-
+        from .domain_intel import normalize_domain, resolve_ips, lookup_whois, fetch_homepage
+        domain = normalize_domain(domain)
+        result: dict = {"domain": domain, "reachable": False, "ip_addresses": resolve_ips(domain),
+                        "status_code": None}
+        if not result["ip_addresses"]:
+            result["dns_error"] = "Domain does not resolve"
+        w = lookup_whois(domain)
+        result.update({"registrar": w.registrar, "created": w.creation_date,
+                       "expires": w.expiration_date, "name_servers": w.name_servers[:4]})
+        if w.error and not w.registrar:
+            result["whois_error"] = w.error
+        if result["ip_addresses"]:
+            headers, _ = fetch_homepage(domain)
+            if "_error" in headers:
+                result["http_error"] = headers["_error"]
+            else:
+                result["status_code"] = headers.get("_status_code")
+                result["final_url"] = headers.get("_final_url")
+                result["reachable"] = (result["status_code"] or 600) < 500
+                result["server"] = headers.get("Server") or headers.get("server", "")
         return result
-
-    # ------------------------------------------------------------------
-    # Email check
-    # ------------------------------------------------------------------
 
     def _check_email(self, email: str) -> dict:
-        result: dict = {"email": email, "valid_format": False, "mx_records": [], "deliverable": False}
-
-        # Format check
-        if not EMAIL_RE.match(email):
+        from .email_osint import (validate_format, get_mx_records, check_disposable,
+                                  FREE_PROVIDERS, check_xposedornot)
+        email = email.strip().lower()
+        result: dict = {"email": email, "valid_format": validate_format(email), "mx_records": [],
+                        "deliverable_domain": False}
+        if not result["valid_format"]:
             result["format_error"] = "Invalid email format"
             return result
-        result["valid_format"] = True
-
         domain = email.split("@", 1)[1]
         result["domain"] = domain
-
-        # MX record check
-        if DNS_AVAILABLE:
-            try:
-                mx_records = dns_resolver.resolve(domain, "MX")
-                mxs = sorted(
-                    [(r.preference, str(r.exchange).rstrip(".")) for r in mx_records],
-                    key=lambda x: x[0],
-                )
-                result["mx_records"] = [f"{pref} {exch}" for pref, exch in mxs]
-                result["deliverable"] = bool(mxs)
-            except Exception as exc:
-                result["mx_error"] = str(exc)
-        else:
-            result["mx_error"] = "dnspython not available"
-
+        result["mx_records"] = get_mx_records(domain)
+        result["deliverable_domain"] = bool(result["mx_records"])
+        result["disposable"] = check_disposable(domain)
+        result["free_provider"] = domain in FREE_PROVIDERS
+        breaches, err = check_xposedornot(email)
+        result["breach_count"] = len(breaches)
+        result["breaches"] = [b["Name"] for b in breaches][:50]
+        if err:
+            result["breach_error"] = err
         return result
 
-    # ------------------------------------------------------------------
-    # IP check
-    # ------------------------------------------------------------------
-
-    def _check_ip(self, ip: str) -> dict:
-        result: dict = {"ip": ip, "geo": {}, "hostname": ""}
-
-        # rDNS
-        try:
-            hostname, _aliases, _addrs = socket.gethostbyaddr(ip)
-            result["hostname"] = hostname
-        except Exception:
-            result["hostname"] = ""
-
-        # GeoIP via ip-api.com
-        try:
-            resp = requests.get(
-                f"http://ip-api.com/json/{ip}",
-                headers=HEADERS,
-                timeout=8,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                result["geo"] = {
-                    "country": data.get("country", ""),
-                    "region": data.get("regionName", ""),
-                    "city": data.get("city", ""),
-                    "isp": data.get("isp", ""),
-                    "org": data.get("org", ""),
-                    "latitude": data.get("lat", ""),
-                    "longitude": data.get("lon", ""),
-                    "timezone": data.get("timezone", ""),
-                    "status": data.get("status", ""),
-                }
-        except Exception as exc:
-            result["geo_error"] = str(exc)
-
+    def _check_ip(self, target: str) -> dict:
+        from .ip_intel import resolve_to_ip, ip_scope, get_reverse_dns, get_geolocation, get_rdap
+        ip = resolve_to_ip(target)
+        if not ip:
+            return {"ip": target, "error": "Could not resolve"}
+        result: dict = {"ip": ip, "scope": ip_scope(ip), "hostname": ", ".join(get_reverse_dns(ip))}
+        if result["scope"] == "public":
+            g = get_geolocation(ip)
+            result["geo"] = {"country": g.country, "region": g.region, "city": g.city,
+                             "isp": g.isp, "org": g.org, "asn": g.asn, "latitude": g.lat,
+                             "longitude": g.lon, "timezone": g.timezone, "proxy": g.proxy,
+                             "hosting": g.hosting, "source": g.source}
+            if g.error and not g.country:
+                result["geo_error"] = g.error
+            rd = get_rdap(ip)
+            result["network"] = rd.get("name", "")
+            result["abuse"] = rd.get("abuse", [])
         return result
-
-    # ------------------------------------------------------------------
-    # Username check
-    # ------------------------------------------------------------------
 
     def _check_username(self, username: str) -> dict:
-        found = []
-        not_found = []
-        errors = []
-
-        for site_name, url_template in USERNAME_SITES:
-            url = url_template.format(username)
-            try:
-                resp = requests.head(
-                    url,
-                    headers=HEADERS,
-                    timeout=6,
-                    allow_redirects=True,
-                )
-                if resp.status_code == 200:
-                    found.append({"site": site_name, "url": url})
-                elif resp.status_code == 404:
-                    not_found.append(site_name)
+        from .username_checker import load_sites, check_single_site
+        import concurrent.futures
+        from . import net as _net
+        sites = {k: v for k, v in load_sites().items() if not v.get("nsfw")}
+        http = _net.session(retries=1)
+        found, not_found, errors = [], [], []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=int(self.settings.get("max_threads", 20))) as ex:
+            futs = [ex.submit(check_single_site, n, d, username, int(self.settings.get("request_timeout", 10)), http, True)
+                    for n, d in sites.items()]
+            for f in concurrent.futures.as_completed(futs):
+                if self._stop:
+                    break
+                r = f.result()
+                if r.found:
+                    found.append({"site": r.site, "url": r.url})
+                elif r.state in ("error", "blocked"):
+                    errors.append({"site": r.site, "error": r.error})
                 else:
-                    errors.append({"site": site_name, "status": resp.status_code})
-            except Exception as exc:
-                errors.append({"site": site_name, "error": str(exc)})
-
-        return {
-            "username": username,
-            "found": found,
-            "not_found": not_found,
-            "errors": errors,
-            "found_count": len(found),
-        }
-
-    # ------------------------------------------------------------------
-    # Phone check
-    # ------------------------------------------------------------------
+                    not_found.append(r.site)
+        return {"username": username, "sites_checked": len(sites), "found": sorted(found, key=lambda x: x["site"]),
+                "not_found_count": len(not_found), "errors": errors, "found_count": len(found)}
 
     def _check_phone(self, phone: str) -> dict:
-        result: dict = {"phone": phone, "valid": False, "country": "", "formatted": ""}
-
-        # Normalize
-        digits_only = re.sub(r"[^\d+]", "", phone)
-
-        # Basic length check
-        digit_count = len(re.sub(r"\D", "", digits_only))
-        if digit_count < 7 or digit_count > 15:
-            result["error"] = f"Invalid length: {digit_count} digits"
-            return result
-
-        result["valid"] = True
-        result["formatted"] = digits_only
-        result["digit_count"] = digit_count
-
-        # Country detection by prefix
-        detected_country = ""
-        for prefix, country in PHONE_PREFIXES.items():
-            if digits_only.startswith(prefix):
-                detected_country = country
-                result["prefix"] = prefix
-                break
-
-        # Fallback: if starts with 1 (NANP)
-        if not detected_country and digits_only.startswith("1") and digit_count == 11:
-            detected_country = "US/Canada (NANP)"
-        elif not detected_country and digit_count == 10:
-            detected_country = "Possibly US/Canada (no country code)"
-
-        result["country"] = detected_country or "Unknown"
-        return result
+        from .phone_osint import analyze_phone
+        r = analyze_phone(phone, self.settings.get("default_region", "US"))
+        return {"phone": phone, "valid": r.is_valid, "possible": r.is_possible,
+                "formatted": r.formatted_international, "e164": r.formatted_e164,
+                "country": r.country_name, "region": r.area_description, "type": r.number_type,
+                "carrier": r.carrier, "timezones": r.timezone, **({"error": r.error} if r.error else {})}
 
 
 # ------------------------------------------------------------------

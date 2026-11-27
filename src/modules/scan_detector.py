@@ -16,6 +16,8 @@ from typing import Dict, List
 import psutil
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from .connection_guard import listening_ports, is_inbound
+
 
 @dataclass
 class ScanEvent:
@@ -86,19 +88,23 @@ class ScanDetector(QThread):
 
         now = time.time()
         current = set()
+        listen = listening_ports()
 
         for c in conns:
             if not c.raddr:
                 continue
-            # We only care about connections INTO us
-            key = (c.raddr.ip, c.laddr.port)
+            # Only connections INTO us (to a listening port, or half-open SYN_RECV).
+            # Outbound connections use random ephemeral local ports and are ignored.
+            if not is_inbound(c, listen):
+                continue
+            key = (c.raddr.ip, c.raddr.port, c.laddr.port)
             current.add(key)
 
             if key in self._prev_conns:
                 continue  # already processed
 
             rip = c.raddr.ip
-            if rip in ('127.0.0.1', '::1'):
+            if rip in ('127.0.0.1', '::1') or rip.startswith('127.') or rip.startswith('::ffff:127.'):
                 continue
 
             # Record probe
@@ -180,7 +186,9 @@ class ScanDetector(QThread):
     def _resolve(ip: str) -> str:
         import socket
         try:
-            return socket.gethostbyaddr(ip)[0]
+            from . import net
+            names = net.reverse_dns(ip)
+            return names[0] if names else ""
         except Exception:
             return ''
 

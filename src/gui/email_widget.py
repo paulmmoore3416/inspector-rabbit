@@ -2,6 +2,8 @@
 Inspector Rabbit - Email OSINT Widget
 """
 
+import html as _html
+import re
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QFrame, QTextEdit, QGroupBox, QGridLayout,
@@ -199,7 +201,7 @@ class EmailWidget(QWidget):
         <li>SMTP mailbox verification</li>
         <li>Disposable email detection</li>
         <li>Gravatar profile lookup</li>
-        <li>HaveIBeenPwned breach check (requires API key)</li>
+        <li>Breach check: XposedOrNot (free) + HaveIBeenPwned (API key)</li>
         </ul>
         </div>
         </div>
@@ -287,12 +289,26 @@ class EmailWidget(QWidget):
         </tr>
         """
 
+        E = _html.escape
+        gp = getattr(result, 'gravatar_profile', {}) or {}
         rows = [
-            ("SMTP Valid", "✅ Mailbox confirmed" if result.smtp_valid else f"❌ {result.smtp_message}"),
-            ("Gravatar Hash", result.gravatar_hash),
-            ("Gravatar URL", f"https://www.gravatar.com/avatar/{result.gravatar_hash}" if result.gravatar_hash else "N/A"),
+            ("SMTP Mailbox", "✅ Mailbox confirmed" if result.smtp_valid
+             else ("⚠️ " if getattr(result, 'catch_all', False) else "❌ ") + E(result.smtp_message)),
+            ("Catch-all Domain", "Yes — any address is accepted" if getattr(result, 'catch_all', False) else "No / unknown"),
+            ("Free Provider", "Yes" if getattr(result, 'free_provider', False) else "No"),
+            ("Gravatar Hash (SHA-256)", result.gravatar_hash),
+            ("Gravatar Profile", E(gp.get('profile_url', '')) or ("Avatar only" if result.gravatar_exists else "N/A")),
+        ]
+        for k, label in [('display_name', 'Gravatar Name'), ('location', 'Gravatar Location'),
+                         ('job_title', 'Job Title'), ('company', 'Company'), ('description', 'Bio')]:
+            if gp.get(k):
+                rows.append((label, E(str(gp[k])[:200])))
+        for acct in gp.get('verified_accounts', []):
+            rows.append((f"Linked: {E(acct.get('service', ''))}", E(acct.get('url', ''))))
+        rows += [
             ("MX Servers", f"{len(result.mx_records)} found"),
-            ("Breaches", f"🚨 {len(result.breaches)} breach(es) found" if result.breaches else "✅ No breaches found"),
+            ("Breaches", (f"🚨 {len(result.breaches)} breach(es) found" if result.breaches else "✅ No breaches found")
+             + (f" (checked: {', '.join(result.breach_sources)})" if getattr(result, 'breach_sources', None) else "")),
         ]
 
         for i, (field, value) in enumerate(rows):
@@ -307,7 +323,7 @@ class EmailWidget(QWidget):
         if result.breach_error:
             html += f"""
             <tr><td colspan='2' style='padding:10px; color:#e3b341; font-size:11px;'>
-            ℹ️ {result.breach_error}</td></tr>
+            ℹ️ {_html.escape(result.breach_error)}</td></tr>
             """
 
         html += "</table></div>"
@@ -326,14 +342,18 @@ class EmailWidget(QWidget):
         if result.breaches:
             breach_html = f"<div style='padding:16px;'><h3 style='color:#f85149; margin-bottom:16px;'>🚨 {len(result.breaches)} Breach(es) Found</h3>"
             for breach in result.breaches:
-                name = breach.get('Name', 'Unknown')
-                date = breach.get('BreachDate', 'Unknown')
-                desc = breach.get('Description', '')
-                domain = breach.get('Domain', '')
+                name = _html.escape(str(breach.get('Name', 'Unknown')))
+                date = _html.escape(str(breach.get('BreachDate', 'Unknown')))
+                desc = _html.escape(re.sub(r'<[^>]+>', '', str(breach.get('Description', ''))))
+                domain = _html.escape(str(breach.get('Domain', '')))
+                src = _html.escape(str(breach.get('Source', 'HaveIBeenPwned')))
+                count = breach.get('PwnCount', '')
+                classes = _html.escape(', '.join(breach.get('DataClasses', []) or [])[:200])
                 breach_html += f"""
                 <div style='background:#1c0a0a; border:1px solid #f8514944; border-radius:8px; padding:14px; margin-bottom:10px;'>
                   <div style='color:#f85149; font-weight:bold;'>{name}</div>
-                  <div style='color:#8b949e; font-size:11px; margin-top:4px;'>Date: {date} | Domain: {domain}</div>
+                  <div style='color:#8b949e; font-size:11px; margin-top:4px;'>Date: {date} | Domain: {domain} | Records: {count} | Source: {src}</div>
+                  <div style='color:#ffa657; font-size:11px; margin-top:4px;'>{classes}</div>
                   <div style='color:#c9d1d9; font-size:11px; margin-top:6px;'>{desc[:200]}</div>
                 </div>"""
             self.breaches_text.setHtml(breach_html + "</div>")
@@ -343,7 +363,7 @@ class EmailWidget(QWidget):
             <div style='font-size:48px;'>✅</div>
             <h3>No breaches found</h3>
             <p style='color:#8b949e; font-size:12px;'>
-            """ + (result.breach_error or "This email was not found in known breach databases") + """
+            """ + _html.escape(result.breach_error or "This email was not found in known breach databases") + """
             </p>
             </div>""")
 
@@ -358,9 +378,10 @@ class EmailWidget(QWidget):
 
         self.status_log.append(f"⚡  Generating patterns for {first} {last} @ {domain}...")
 
-        thread = EmailPatternThread(first, last, domain)
-        thread.result_ready.connect(self._on_patterns)
-        thread.start()
+        # Keep a reference so the running QThread is not garbage-collected
+        self._pattern_thread = EmailPatternThread(first, last, domain)
+        self._pattern_thread.result_ready.connect(self._on_patterns)
+        self._pattern_thread.start()
 
     def _on_patterns(self, patterns: list):
         self.patterns_table.setRowCount(0)

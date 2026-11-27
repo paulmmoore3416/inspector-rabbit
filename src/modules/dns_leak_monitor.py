@@ -10,28 +10,38 @@ when DNS responses may be intercepted or manipulated.
 import hashlib
 import ipaddress
 import os
+import random
+import re
+import shutil
 import socket
+import string
+import subprocess
 import time
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from . import net
+
 
 RESOLV_CONF = '/etc/resolv.conf'
 KNOWN_TRUSTED_DNS = {
-    '1.1.1.1', '1.0.0.1',             # Cloudflare
-    '8.8.8.8', '8.8.4.4',             # Google
-    '9.9.9.9', '149.112.112.112',      # Quad9
-    '208.67.222.222', '208.67.220.220',# OpenDNS
-    '127.0.0.1', '127.0.0.53',         # Local (systemd-resolved, dnsmasq)
-    '192.168.1.1', '192.168.0.1',      # Common home router
+    '1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001',   # Cloudflare
+    '8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844',   # Google
+    '9.9.9.9', '149.112.112.112', '2620:fe::fe', '2620:fe::9',              # Quad9
+    '208.67.222.222', '208.67.220.220',                                     # OpenDNS
+    '194.242.2.2', '10.64.0.1',                                             # Mullvad
+    '127.0.0.1', '127.0.0.53', '127.0.0.54', '::1',                         # Local stub resolvers
+    '100.100.100.100', 'fd7a:115c:a1e0::53',                                # Tailscale MagicDNS
 }
 
+# Hostnames whose addresses are fixed anycast IPs. If the system resolver
+# returns anything else for them, the answer was rewritten in transit.
 CANARY_HOSTS = [
-    ('example.com',     '93.184.216.34'),
-    ('google.com',      None),          # Just check it resolves
-    ('cloudflare.com',  None),
+    ('one.one.one.one', {'1.1.1.1', '1.0.0.1'}),
+    ('dns.google',      {'8.8.8.8', '8.8.4.4'}),
+    ('dns.quad9.net',   {'9.9.9.9', '149.112.112.112'}),
 ]
 
 
@@ -95,7 +105,16 @@ class DNSLeakMonitor(QThread):
         self.log_event.emit(
             f"📋  DNS resolvers: {', '.join(self._last_resolvers) or 'none detected'}"
         )
+        if any(r.startswith('127.0.0.5') for r in self._last_resolvers):
+            ups = self._resolvectl_upstreams()
+            if ups:
+                self.log_event.emit(f"📋  systemd-resolved upstreams: {', '.join(ups)}")
+                self._last_resolvers = self._last_resolvers + [u for u in ups if u not in self._last_resolvers]
+        if net.proxy_active():
+            self.log_event.emit("🧅  App lookups use DNS-over-HTTPS through the proxy; "
+                                "the system resolver below is only used by other programs.")
         self._check_resolvers(self._last_resolvers)
+        self._check_nxdomain_hijack()
 
     def _check_resolv(self):
         content = self._read_resolv()
@@ -128,12 +147,18 @@ class DNSLeakMonitor(QThread):
 
     def _check_resolvers(self, resolvers: List[str]):
         for r in resolvers:
+            if r in ('100.100.100.100', 'fd7a:115c:a1e0::53'):
+                self.log_event.emit("🟢  Tailscale MagicDNS resolver (100.100.100.100) — trusted")
+                continue
             if r not in KNOWN_TRUSTED_DNS:
-                # Check if it's a private/local IP first
                 try:
-                    addr = ipaddress.ip_address(r)
+                    addr = ipaddress.ip_address(r.split('%')[0])
+                    if net.is_tailscale(str(addr)):
+                        self.log_event.emit(f"🟢  Tailnet resolver {r}")
+                        continue
                     if addr.is_private or addr.is_loopback or addr.is_link_local:
-                        self.log_event.emit(f"🟡  Unknown private resolver: {r} — monitor closely")
+                        self.log_event.emit(f"🟡  Local-network resolver {r} (router/ISP gateway) — "
+                                            f"it sees every domain you look up")
                         continue
                 except ValueError:
                     pass
@@ -141,61 +166,86 @@ class DNSLeakMonitor(QThread):
                 self.leak_detected.emit({
                     'timestamp': datetime.now().strftime('%H:%M:%S'),
                     'type': 'UNKNOWN_RESOLVER',
-                    'severity': 'medium',
-                    'detail': f'Unrecognised DNS resolver: {r} — possible interception point',
+                    'severity': 'low',
+                    'detail': (f'Resolver {r} is not a well-known public DNS service (usually your ISP). '
+                               f'It can log every domain you look up — use Tor/VPN DNS for investigations.'),
                 })
-                self.log_event.emit(f"🟡  Unrecognised resolver {r} — not in trusted list")
+                self.log_event.emit(f"🟡  Resolver {r} is not a known public DNS service (likely ISP)")
 
     # ── Canary verification ────────────────────────────────────────────────
 
+    def _check_nxdomain_hijack(self):
+        """A random non-existent name must fail. If it resolves, the resolver rewrites NXDOMAIN."""
+        label = 'ir-nx-' + ''.join(random.choices(string.ascii_lowercase + string.digits, k=20))
+        try:
+            ip = socket.gethostbyname(f"{label}.com")
+        except socket.gaierror:
+            self.log_event.emit("🟢  NXDOMAIN check passed (resolver does not hijack typos)")
+            return
+        self._anomaly_count += 1
+        self.leak_detected.emit({
+            'timestamp': datetime.now().strftime('%H:%M:%S'),
+            'type': 'NXDOMAIN_HIJACK', 'severity': 'medium',
+            'detail': f'Non-existent domain resolved to {ip} — resolver (ISP/router) rewrites failed lookups',
+        })
+        self.log_event.emit(f"🟡  NXDOMAIN hijacking: {label}.com → {ip}")
+
     def _verify_canaries(self):
-        for host, expected_ip in CANARY_HOSTS:
+        for host, expected in CANARY_HOSTS:
             t0 = time.time()
             try:
-                resolved = socket.gethostbyname(host)
+                infos = socket.getaddrinfo(host, None, socket.AF_INET)
+                resolved = sorted({i[4][0] for i in infos})
                 latency_ms = (time.time() - t0) * 1000
-                ok = (expected_ip is None) or (resolved == expected_ip)
-
+                ok = bool(resolved) and set(resolved) <= expected
                 result = {
                     'timestamp': datetime.now().strftime('%H:%M:%S'),
                     'host': host,
-                    'resolved_ip': resolved,
-                    'expected': expected_ip or 'any',
+                    'resolved_ip': ', '.join(resolved),
+                    'expected': ', '.join(sorted(expected)),
                     'ok': ok,
                     'latency_ms': round(latency_ms, 1),
                 }
                 self._dns_log.append(result)
                 self.dns_check_result.emit(result)
-
                 if not ok:
                     self._anomaly_count += 1
                     self.leak_detected.emit({
-                        'timestamp': result['timestamp'],
-                        'type': 'DNS_SPOOFING',
-                        'severity': 'high',
-                        'detail': (f'{host} resolved to {resolved} '
-                                   f'(expected {expected_ip}) — possible DNS spoofing'),
+                        'timestamp': result['timestamp'], 'type': 'DNS_SPOOFING', 'severity': 'high',
+                        'detail': (f'{host} resolved to {result["resolved_ip"]} but its address is fixed '
+                                   f'({result["expected"]}) — DNS answers are being rewritten'),
                     })
-                    self.log_event.emit(
-                        f"🔴 DNS SPOOF: {host} → {resolved} (expected {expected_ip})"
-                    )
-
+                    self.log_event.emit(f"🔴 DNS SPOOF: {host} → {result['resolved_ip']}")
                 if latency_ms > self.LATENCY_WARN_MS:
                     self.leak_detected.emit({
-                        'timestamp': result['timestamp'],
-                        'type': 'DNS_SLOW_RESPONSE',
-                        'severity': 'medium',
-                        'detail': (f'DNS for {host} took {latency_ms:.0f}ms — '
-                                   f'possible transparent proxy in path'),
+                        'timestamp': result['timestamp'], 'type': 'DNS_SLOW_RESPONSE', 'severity': 'low',
+                        'detail': f'DNS for {host} took {latency_ms:.0f}ms (slow resolver or network)',
                     })
-                    self.log_event.emit(
-                        f"🟡  Slow DNS: {host} took {latency_ms:.0f}ms (>{self.LATENCY_WARN_MS}ms)"
-                    )
-
             except socket.gaierror as exc:
                 self.log_event.emit(f"⚠️  DNS canary failed for {host}: {exc}")
 
     # ── Helpers ────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _resolvectl_upstreams() -> List[str]:
+        """Real upstream servers when /etc/resolv.conf points at systemd-resolved."""
+        if not shutil.which('resolvectl'):
+            return []
+        try:
+            out = subprocess.run(['resolvectl', 'dns'], capture_output=True, text=True, timeout=4).stdout
+        except Exception:
+            return []
+        ips = []
+        for line in out.splitlines():
+            for tok in line.split(':', 1)[-1].split():
+                tok = tok.split('#')[0].strip('[]')
+                try:
+                    ipaddress.ip_address(tok.split('%')[0])
+                    if tok not in ips:
+                        ips.append(tok)
+                except ValueError:
+                    pass
+        return ips
 
     @staticmethod
     def _read_resolv() -> str:

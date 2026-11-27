@@ -8,6 +8,7 @@ Bottom: Real-time metrics graphs — traffic I/O + detected scan attempts
 """
 
 import datetime
+import html as _html
 from typing import Optional
 
 from PyQt6.QtWidgets import (
@@ -79,7 +80,7 @@ class TerminalLog(QTextEdit):
         ts = datetime.datetime.now().strftime('%H:%M:%S.%f')[:-3]
         html = (
             f'<span style="color:#484f58;">[{ts}]</span> '
-            f'<span style="color:{color};">{text}</span><br/>'
+            f'<span style="color:{color};">{_html.escape(text)}</span><br/>'
         )
         self.moveCursor(QTextCursor.MoveOperation.End)
         self.insertHtml(html)

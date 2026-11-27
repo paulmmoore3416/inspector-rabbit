@@ -1,248 +1,194 @@
 """
 Inspector Rabbit - Paste & Leak Scanner
-Search public paste sites and GitHub for data leaks
+Searches public code, discussion and paste sites for a term.
+
+Sources
+  * GitHub code search   — requires a GitHub token (free; Settings → API keys)
+  * GitHub repositories  — public search API (no token needed, 10 req/min)
+  * GitHub commits       — public search API
+  * HackerNews           — Algolia API
+  * Pastebin / Reddit    — searched through the dork engine (site: queries),
+                           because Pastebin has no search API, psbdmp.ws is
+                           offline and Reddit blocks unauthenticated API use.
 """
 
-import time
-import json
+import html
 import re
+import time
+from typing import List, Dict, Callable
+
 import requests
-from typing import List, Dict
-from dataclasses import dataclass, field
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
+from . import net
+from .config import load_settings
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-}
-
-
-@dataclass
-class PasteResult:
-    source: str = ""
-    title: str = ""
-    url: str = ""
-    date: str = ""
-    author: str = ""
-    preview: str = ""
-    matched_terms: List[str] = field(default_factory=list)
-    risk_level: str = "low"   # low, medium, high
-
-
-@dataclass
-class PasteScanResult:
-    query: str = ""
-    total_found: int = 0
-    results: List[PasteResult] = field(default_factory=list)
-    sources_checked: List[str] = field(default_factory=list)
-    high_risk_count: int = 0
-    error: str = ""
-
+HEADERS = {'User-Agent': net.TOOL_UA, 'Accept': 'application/json'}
 
 RISK_KEYWORDS = {
     'high': [
-        'password', 'passwd', 'credential', 'api_key', 'apikey', 'secret',
-        'token', 'private_key', 'access_key', 'database', 'db_password',
-        'connection_string', 'smtp_pass', 'ssh_key', 'BEGIN RSA',
+        'password', 'passwd', 'pwd=', 'credential', 'api_key', 'apikey', 'api-key',
+        'secret', 'token', 'private_key', 'private key', 'access_key', 'aws_access_key_id',
+        'db_password', 'connection_string', 'smtp_pass', 'ssh-rsa', 'begin rsa',
+        'begin openssh', 'authorization: bearer', 'combolist', 'dump',
     ],
     'medium': [
-        'email', 'username', 'user', 'login', 'admin', 'config',
-        'backup', 'dump', 'export', 'breach', 'leak', 'exposed',
+        'email', 'username', 'login', 'admin', 'config', 'backup', 'export',
+        'breach', 'leak', 'exposed', 'database',
     ],
-    'low': ['found', 'test', 'demo', 'example'],
 }
 
 
-def assess_risk(text: str, matched_terms: List[str]) -> str:
-    text_lower = text.lower()
-    for term in RISK_KEYWORDS['high']:
-        if term.lower() in text_lower:
-            return 'high'
-    for term in RISK_KEYWORDS['medium']:
-        if term.lower() in text_lower:
-            return 'medium'
+def assess_risk(text: str) -> str:
+    t = (text or '').lower()
+    if any(k in t for k in RISK_KEYWORDS['high']):
+        return 'high'
+    if any(k in t for k in RISK_KEYWORDS['medium']):
+        return 'medium'
     return 'low'
 
 
-def search_github_gists(query: str, max_results: int = 20) -> List[PasteResult]:
-    """Search GitHub public gists for mentions of query"""
-    results = []
-    try:
-        resp = requests.get(
-            'https://api.github.com/search/code',
-            params={
-                'q': query,
-                'per_page': min(max_results, 30),
-                'sort': 'indexed',
-                'order': 'desc',
-            },
-            headers={
-                **HEADERS,
-                'Accept': 'application/vnd.github.v3+json',
-            },
-            timeout=15
-        )
-
-        if resp.status_code == 200:
-            data = resp.json()
-            for item in data.get('items', []):
-                repo = item.get('repository', {})
-                preview = ' | '.join([f.get('fragment', '') for f in item.get('text_matches', [])])[:200]
-                risk = assess_risk(preview, [query])
-                results.append(PasteResult(
-                    source='GitHub',
-                    title=item.get('name', 'Unknown'),
-                    url=item.get('html_url', ''),
-                    date=item.get('last_modified', ''),
-                    author=repo.get('full_name', ''),
-                    preview=preview or item.get('name', ''),
-                    matched_terms=[query],
-                    risk_level=risk,
-                ))
-        elif resp.status_code == 403:
-            # Rate limited
-            pass
-    except Exception:
-        pass
-    return results
+def _clean(text: str, n: int = 240) -> str:
+    text = html.unescape(re.sub(r'<[^>]+>', ' ', text or ''))
+    return re.sub(r'\s+', ' ', text).strip()[:n]
 
 
-def search_github_repos(query: str, max_results: int = 20) -> List[PasteResult]:
-    """Search GitHub repositories for query mentions"""
-    results = []
-    try:
-        resp = requests.get(
-            'https://api.github.com/search/repositories',
-            params={
-                'q': query,
-                'per_page': min(max_results, 20),
-                'sort': 'updated',
-            },
-            headers={
-                **HEADERS,
-                'Accept': 'application/vnd.github.v3+json',
-            },
-            timeout=15
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            for item in data.get('items', []):
-                results.append(PasteResult(
-                    source='GitHub Repo',
-                    title=item.get('full_name', ''),
-                    url=item.get('html_url', ''),
-                    date=item.get('updated_at', ''),
-                    author=item.get('owner', {}).get('login', ''),
-                    preview=item.get('description', '')[:200],
-                    matched_terms=[query],
-                    risk_level=assess_risk(item.get('description', ''), [query]),
-                ))
-    except Exception:
-        pass
-    return results
+def _item(source, title, url, date='', author='', snippet='', risk=None, **extra) -> Dict:
+    d = {
+        'source': source, 'title': _clean(title, 160) or url, 'url': url,
+        'date': str(date or ''), 'author': author or '', 'snippet': _clean(snippet),
+        'risk': risk or assess_risk(f"{title} {snippet}"),
+    }
+    d.update(extra)
+    return d
 
 
-def search_hackernews(query: str, max_results: int = 15) -> List[PasteResult]:
-    """Search HackerNews via Algolia API"""
-    results = []
-    try:
-        resp = requests.get(
-            'https://hn.algolia.com/api/v1/search',
-            params={
-                'query': query,
-                'hitsPerPage': max_results,
-                'tags': 'story,comment',
-            },
-            headers=HEADERS,
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            for hit in data.get('hits', []):
-                title = hit.get('title', '') or hit.get('story_title', '') or 'Comment'
-                results.append(PasteResult(
-                    source='HackerNews',
-                    title=title,
-                    url=hit.get('url', '') or f"https://news.ycombinator.com/item?id={hit.get('objectID', '')}",
-                    date=hit.get('created_at', ''),
-                    author=hit.get('author', ''),
-                    preview=hit.get('story_text', '') or hit.get('comment_text', '') or '',
-                    matched_terms=[query],
-                    risk_level='low',
-                ))
-    except Exception:
-        pass
-    return results
+def _gh_headers(token: str) -> Dict:
+    h = {'User-Agent': net.TOOL_UA, 'Accept': 'application/vnd.github.text-match+json',
+         'X-GitHub-Api-Version': '2022-11-28'}
+    if token:
+        h['Authorization'] = f'Bearer {token}'
+    return h
 
 
-def search_reddit_pushshift(query: str, max_results: int = 10) -> List[PasteResult]:
-    """Search Reddit via Pushshift API (public posts)"""
-    results = []
-    try:
-        resp = requests.get(
-            'https://api.pushshift.io/reddit/search/submission',
-            params={'q': query, 'size': max_results, 'sort': 'desc', 'sort_type': 'score'},
-            headers=HEADERS,
-            timeout=10
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            for post in data.get('data', []):
-                results.append(PasteResult(
-                    source='Reddit',
-                    title=post.get('title', ''),
-                    url=f"https://reddit.com{post.get('permalink', '')}",
-                    date=str(post.get('created_utc', '')),
-                    author=post.get('author', ''),
-                    preview=post.get('selftext', '')[:200],
-                    matched_terms=[query],
-                    risk_level=assess_risk(post.get('selftext', ''), [query]),
-                ))
-    except Exception:
-        pass
-    return results
+def _gh_error(resp) -> str:
+    if resp.status_code == 401:
+        return 'GitHub token rejected or missing'
+    if resp.status_code in (403, 429):
+        reset = resp.headers.get('X-RateLimit-Reset')
+        wait = f" (resets in {max(0, int(reset) - int(time.time()))}s)" if reset else ''
+        return f'GitHub rate limit reached{wait}'
+    if resp.status_code == 422:
+        return 'GitHub rejected the query (too short or invalid syntax)'
+    return f'GitHub HTTP {resp.status_code}'
 
 
-def search_psbdmp(query: str) -> List[PasteResult]:
-    """Search psbdmp.ws - Pastebin search engine"""
-    results = []
-    try:
-        resp = requests.get(
-            'https://psbdmp.ws/api/v3/search',
-            params={'q': query},
-            headers=HEADERS,
-            timeout=15
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            for item in data.get('data', []):
-                paste_id = item.get('id', '')
-                preview = item.get('text', '')[:300]
-                results.append(PasteResult(
-                    source='Pastebin (via psbdmp)',
-                    title=item.get('title', '') or f"Paste {paste_id}",
-                    url=f"https://pastebin.com/{paste_id}",
-                    date=item.get('date', ''),
-                    author=item.get('author', ''),
-                    preview=preview,
-                    matched_terms=[query],
-                    risk_level=assess_risk(preview, [query]),
-                ))
-    except Exception:
-        pass
-    return results
+def search_github_code(query: str, max_results: int = 20, token: str = '') -> List[Dict]:
+    if not token:
+        raise RuntimeError("GitHub code search requires a token (Settings → GitHub token)")
+    r = requests.get('https://api.github.com/search/code',
+                     params={'q': query, 'per_page': min(max_results, 50)},
+                     headers=_gh_headers(token), timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(_gh_error(r))
+    out = []
+    for it in r.json().get('items', []):
+        repo = it.get('repository', {}) or {}
+        frag = ' … '.join(m.get('fragment', '') for m in it.get('text_matches', []) or [])
+        ext = it.get('name', '').rsplit('.', 1)[-1] if '.' in it.get('name', '') else ''
+        out.append(_item('GitHub Code', f"{repo.get('full_name', '')}/{it.get('path', '')}",
+                         it.get('html_url', ''), author=(repo.get('owner') or {}).get('login', ''),
+                         snippet=frag, language=ext))
+    return out
+
+
+def search_github_repos(query: str, max_results: int = 20, token: str = '') -> List[Dict]:
+    r = requests.get('https://api.github.com/search/repositories',
+                     params={'q': query, 'per_page': min(max_results, 50), 'sort': 'updated'},
+                     headers=_gh_headers(token), timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(_gh_error(r))
+    return [
+        _item('GitHub Repos', it.get('full_name', ''), it.get('html_url', ''),
+              date=it.get('updated_at', ''), author=(it.get('owner') or {}).get('login', ''),
+              snippet=it.get('description') or '', language=it.get('language') or '',
+              risk=assess_risk(f"{it.get('full_name', '')} {it.get('description') or ''}"))
+        for it in r.json().get('items', [])
+    ]
+
+
+def search_github_commits(query: str, max_results: int = 20, token: str = '') -> List[Dict]:
+    r = requests.get('https://api.github.com/search/commits',
+                     params={'q': query, 'per_page': min(max_results, 50), 'sort': 'committer-date'},
+                     headers={**_gh_headers(token), 'Accept': 'application/vnd.github+json'}, timeout=20)
+    if r.status_code != 200:
+        raise RuntimeError(_gh_error(r))
+    out = []
+    for it in r.json().get('items', []):
+        c = it.get('commit', {}) or {}
+        repo = (it.get('repository') or {}).get('full_name', '')
+        msg = c.get('message', '')
+        out.append(_item('GitHub Commits', f"{repo}: {msg.splitlines()[0] if msg else ''}",
+                         it.get('html_url', ''), date=(c.get('committer') or {}).get('date', ''),
+                         author=(c.get('author') or {}).get('name', ''), snippet=msg))
+    return out
+
+
+def search_hackernews(query: str, max_results: int = 20, **_) -> List[Dict]:
+    r = requests.get('https://hn.algolia.com/api/v1/search',
+                     params={'query': query, 'hitsPerPage': max_results, 'tags': '(story,comment)'},
+                     headers=HEADERS, timeout=15)
+    if r.status_code != 200:
+        raise RuntimeError(f'HN Algolia HTTP {r.status_code}')
+    out = []
+    for hit in r.json().get('hits', []):
+        oid = hit.get('objectID', '')
+        title = hit.get('title') or hit.get('story_title') or 'Comment'
+        body = hit.get('story_text') or hit.get('comment_text') or ''
+        out.append(_item('HackerNews', title, f"https://news.ycombinator.com/item?id={oid}",
+                         date=hit.get('created_at', ''), author=hit.get('author', ''),
+                         snippet=body, risk=assess_risk(body) if body else 'low',
+                         external_url=hit.get('url') or ''))
+    return out
+
+
+def _dork_source(source: str, site: str):
+    def fn(query: str, max_results: int = 20, **_) -> List[Dict]:
+        from .dorks_engine import search_auto
+        res = search_auto(f'site:{site} "{query}"', max_results)
+        if not res.results and res.error:
+            raise RuntimeError(f"via {res.engine}: {res.error}")
+        out = []
+        for r in res.results:
+            pid = r['url'].rstrip('/').rsplit('/', 1)[-1] if source == 'Pastebin' else ''
+            out.append(_item(source, r.get('title', ''), r.get('url', ''),
+                             snippet=r.get('snippet', ''), id=pid, engine=res.engine))
+        return out
+    return fn
+
+
+SOURCES: Dict[str, List[tuple]] = {
+    'github': [('GitHub Code', search_github_code), ('GitHub Repos', search_github_repos),
+               ('GitHub Commits', search_github_commits)],
+    'hackernews': [('HackerNews', search_hackernews)],
+    'pastebin': [('Pastebin', _dork_source('Pastebin', 'pastebin.com'))],
+    'reddit': [('Reddit', _dork_source('Reddit', 'reddit.com'))],
+}
 
 
 class PasteScannerThread(QThread):
-    result_ready = pyqtSignal(object)       # PasteResult (one at a time)
+    result_ready = pyqtSignal(dict)       # one finding
     progress = pyqtSignal(str)
-    finished = pyqtSignal(object)           # PasteScanResult (final)
-    error = pyqtSignal(str)
+    finished = pyqtSignal()
+    summary = pyqtSignal(dict)            # {total, high, sources_checked, errors}
 
-    def __init__(self, query: str, max_results_per_source: int = 20):
+    def __init__(self, query: str, sources: Dict[str, bool] = None, max_results_per_source: int = 20):
         super().__init__()
         self.query = query.strip()
+        if isinstance(sources, dict):
+            self.sources = {k for k, v in sources.items() if v}
+        else:
+            self.sources = set(SOURCES)
         self.max_results = max_results_per_source
         self._stop = False
 
@@ -250,33 +196,30 @@ class PasteScannerThread(QThread):
         self._stop = True
 
     def run(self):
-        scan_result = PasteScanResult(query=self.query)
-        all_results = []
-
-        sources = [
-            ('GitHub Code', search_github_gists),
-            ('GitHub Repos', search_github_repos),
-            ('HackerNews', search_hackernews),
-            ('Pastebin (psbdmp)', search_psbdmp),
-            ('Reddit', search_reddit_pushshift),
-        ]
-
-        for source_name, search_fn in sources:
-            if self._stop:
-                break
-            self.progress.emit(f"Searching {source_name}...")
-            try:
-                results = search_fn(self.query)
-                scan_result.sources_checked.append(source_name)
-                for r in results:
-                    all_results.append(r)
-                    scan_result.total_found += 1
-                    if r.risk_level == 'high':
-                        scan_result.high_risk_count += 1
-                    self.result_ready.emit(r)
-            except Exception as e:
-                self.progress.emit(f"  Error searching {source_name}: {e}")
-            time.sleep(0.5)
-
-        scan_result.results = all_results
-        self.finished.emit(scan_result)
+        token = load_settings().get('github_token', '')
+        total, high, checked, errors = 0, 0, [], []
+        seen = set()
+        for key, fns in SOURCES.items():
+            if key not in self.sources:
+                continue
+            for name, fn in fns:
+                if self._stop:
+                    break
+                self.progress.emit(f"Searching {name}...")
+                try:
+                    items = fn(self.query, self.max_results, token=token)
+                    checked.append(name)
+                    self.progress.emit(f"{name}: {len(items)} result(s)")
+                    for it in items:
+                        if it['url'] in seen:
+                            continue
+                        seen.add(it['url'])
+                        total += 1
+                        high += it['risk'] == 'high'
+                        self.result_ready.emit(it)
+                except Exception as e:
+                    errors.append(f"{name}: {e}")
+                    self.progress.emit(f"⚠️ {name}: {e}")
+                time.sleep(0.4)
+        self.summary.emit({'total': total, 'high': high, 'sources_checked': checked, 'errors': errors})
+        self.finished.emit()

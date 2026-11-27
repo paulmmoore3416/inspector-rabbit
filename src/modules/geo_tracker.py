@@ -11,12 +11,13 @@ from typing import List
 import requests
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from . import net
+
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) Chrome/120.0.0.0 Safari/537.36'
 }
 
-IP_RE = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$')
 
 BATCH_URL = "http://ip-api.com/batch"
 BATCH_FIELDS = (
@@ -26,14 +27,8 @@ BATCH_FIELDS = (
 
 
 def _resolve(target: str) -> str:
-    """Return the IPv4 address for target (resolve hostname if needed)."""
-    target = target.strip()
-    if IP_RE.match(target):
-        return target
-    try:
-        return socket.gethostbyname(target)
-    except Exception:
-        return target  # return as-is; API will report failure
+    """Return an IP for target (resolving hostnames, proxy-aware). '' if unresolvable."""
+    return net.resolve_host(target)
 
 
 class GeoTrackThread(QThread):
@@ -56,11 +51,29 @@ class GeoTrackThread(QThread):
                 continue
             self.progress.emit(f"Resolving {target}...")
             ip = _resolve(target)
+            if not ip:
+                self.progress.emit(f"  ❌ {target}: could not resolve")
+                err = {"ip": "", "original_target": target, "country": "", "country_code": "",
+                       "region": "", "city": "", "lat": None, "lon": None, "isp": "", "org": "",
+                       "as_num": "", "timezone": "", "query_time_ms": 0, "source": "dns",
+                       "status": "error", "error": "Could not resolve hostname"}
+                all_results.append(err)
+                self.result.emit(err)
+                continue
+            if not net.is_public_ip(ip):
+                self.progress.emit(f"  ⚠️  {target} → {ip} is not a public IP — cannot geolocate")
+                err = {"ip": ip, "original_target": target, "country": "", "country_code": "",
+                       "region": "", "city": "", "lat": None, "lon": None, "isp": "", "org": "",
+                       "as_num": "", "timezone": "", "query_time_ms": 0, "source": "local",
+                       "status": "error", "error": "Private/reserved address"}
+                all_results.append(err)
+                self.result.emit(err)
+                continue
             resolved_pairs.append((target, ip))
             self.progress.emit(f"  {target} → {ip}")
 
         if not resolved_pairs:
-            self.done.emit([])
+            self.done.emit(all_results)
             return
 
         # ip-api.com allows max 100 per batch; process in chunks
@@ -136,9 +149,9 @@ class GeoTrackThread(QThread):
                     f"  ✅ {result['ip']} → {city_str or 'Unknown'} ({result['isp']})"
                 )
 
-            # ip-api.com free tier: 45 requests/min; be polite between batches
+            # ip-api.com batch endpoint: 15 requests/min
             if chunk_start + chunk_size < len(resolved_pairs):
-                time.sleep(0.5)
+                time.sleep(4.5)
 
         self.progress.emit(f"GeoIP complete — {len(all_results)} result(s).")
         self.done.emit(all_results)

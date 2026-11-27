@@ -1,15 +1,24 @@
 """
 Inspector Rabbit - Social Profile Scraper Module
-Real data: GitHub API, Reddit API, YouTube channel scraping,
-Twitch page scraping, Instagram og-meta, Twitter/X url-only,
-TikTok url-only.
+
+Pulls real public profile data from official / public JSON APIs wherever
+they exist (GitHub, GitLab, Reddit, Bluesky, Mastodon, Keybase, HackerNews,
+DEV, Chess.com, Lichess, Docker Hub) and from page metadata for YouTube and
+Twitch.
+
+Instagram, Twitter/X and TikTok cannot be verified without logging in.
+Those are reported with status "unverified" and a link to check by hand.
+They are NEVER counted as found.
 """
 
 import re
 import time
-import requests
 from datetime import datetime, timezone
+
+import requests
 from PyQt6.QtCore import QThread, pyqtSignal
+
+from . import net
 
 try:
     from bs4 import BeautifulSoup
@@ -17,466 +26,364 @@ try:
 except ImportError:
     _BS4 = False
 
-
 HEADERS = {
-    'User-Agent': (
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-    ),
+    'User-Agent': net.BROWSER_UA,
     'Accept-Language': 'en-US,en;q=0.9',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
 }
-
-JSON_HEADERS = {
-    'User-Agent': 'InspectorRabbit/1.5.0',
-    'Accept': 'application/json',
-}
-
+JSON_HEADERS = {'User-Agent': net.TOOL_UA, 'Accept': 'application/json'}
 TIMEOUT = 12
+
+PLATFORMS = [
+    ('github', '🐙 GitHub'), ('gitlab', '🦊 GitLab'), ('reddit', '🤖 Reddit'),
+    ('bluesky', '🦋 Bluesky'), ('mastodon', '🐘 Mastodon (.social)'), ('keybase', '🔑 Keybase'),
+    ('hackernews', '🟧 HackerNews'), ('devto', '👩‍💻 DEV.to'), ('youtube', '▶️  YouTube'),
+    ('twitch', '🎮 Twitch'), ('chesscom', '♟️  Chess.com'), ('lichess', '♞ Lichess'),
+    ('dockerhub', '🐳 Docker Hub'), ('twitter', '🐦 Twitter / X (manual)'),
+    ('instagram', '📸 Instagram (manual)'), ('tiktok', '🎵 TikTok (manual)'),
+]
 
 
 def _fmt_date(ts) -> str:
     try:
-        return datetime.fromtimestamp(float(ts), tz=timezone.utc).strftime('%Y-%m-%d')
+        if isinstance(ts, (int, float)) or str(ts).replace('.', '').isdigit():
+            v = float(ts)
+            if v > 1e12:
+                v /= 1000
+            return datetime.fromtimestamp(v, tz=timezone.utc).strftime('%Y-%m-%d')
+        return str(ts)[:10]
     except Exception:
-        return str(ts)
+        return str(ts or '')
 
 
 def _og(soup, prop: str) -> str:
-    """Extract an Open Graph / Twitter Card meta tag value."""
     tag = soup.find('meta', property=prop) or soup.find('meta', attrs={'name': prop})
-    if tag:
-        return (tag.get('content') or '').strip()
-    return ''
+    return (tag.get('content') or '').strip() if tag else ''
+
+
+def _strip(s: str, n: int = 300) -> str:
+    return re.sub(r'\s+', ' ', re.sub(r'<[^>]+>', ' ', s or '')).strip()[:n]
 
 
 class SocialScrapeThread(QThread):
     profile_found = pyqtSignal(dict)
-    progress      = pyqtSignal(str)
-    done          = pyqtSignal(dict)
+    progress = pyqtSignal(str)
+    done = pyqtSignal(dict)
 
     def __init__(self, username: str, platforms: list):
         super().__init__()
-        self._username  = username.strip()
+        self._username = username.strip().lstrip('@')
         self._platforms = [p.lower() for p in platforms]
-        self._found     = 0
-        self._errors    = 0
+        self._found = 0
+        self._unverified = 0
+        self._errors = 0
 
     def run(self):
-        self.progress.emit(f"Starting social profile scan for: {self._username}")
-        self.progress.emit(f"Platforms: {', '.join(self._platforms)}")
-
+        u = self._username
+        self.progress.emit(f"Starting social profile scan for: {u}")
         dispatch = {
-            'github':    self._check_github,
-            'reddit':    self._check_reddit,
-            'youtube':   self._check_youtube,
-            'twitch':    self._check_twitch,
-            'instagram': self._check_instagram,
-            'twitter':   self._check_twitter,
-            'tiktok':    self._check_tiktok,
+            'github': self._check_github, 'gitlab': self._check_gitlab,
+            'reddit': self._check_reddit, 'bluesky': self._check_bluesky,
+            'mastodon': self._check_mastodon, 'keybase': self._check_keybase,
+            'hackernews': self._check_hackernews, 'devto': self._check_devto,
+            'youtube': self._check_youtube, 'twitch': self._check_twitch,
+            'chesscom': self._check_chesscom, 'lichess': self._check_lichess,
+            'dockerhub': self._check_dockerhub,
+            'instagram': lambda: self._manual('Instagram', f"https://www.instagram.com/{u}/"),
+            'twitter': lambda: self._manual('Twitter/X', f"https://x.com/{u}"),
+            'tiktok': lambda: self._manual('TikTok', f"https://www.tiktok.com/@{u}"),
         }
-
         for platform in self._platforms:
             fn = dispatch.get(platform)
-            if fn:
-                try:
-                    fn()
-                    time.sleep(0.4)
-                except Exception as e:
-                    self.progress.emit(f"  ↳ {platform} error: {e}")
-                    self._errors += 1
+            if not fn:
+                continue
+            try:
+                fn()
+            except net.ProxyUnavailable as e:
+                self.progress.emit(f"  ↳ {platform}: {e}")
+                self._errors += 1
+            except Exception as e:
+                self.progress.emit(f"  ↳ {platform} error: {e}")
+                self._errors += 1
+            time.sleep(0.3)
 
-        self.progress.emit(f"Scan complete — {self._found} profile(s) found")
+        self.progress.emit(f"Scan complete — {self._found} verified profile(s)"
+                           + (f", {self._unverified} need manual check" if self._unverified else ''))
         self.done.emit({
-            'username':          self._username,
+            'username': u,
             'platforms_checked': len(self._platforms),
-            'found':             self._found,
-            'errors':            self._errors,
+            'found': self._found,
+            'unverified': self._unverified,
+            'errors': self._errors,
         })
 
-    # ── GitHub ─────────────────────────────────────────────────────────────────
+    # ── helpers ──────────────────────────────────────────────────────────
+
+    def _profile(self, platform, url, **kw):
+        self._found += 1
+        d = {
+            'platform': platform, 'username': self._username, 'display_name': '', 'bio': '',
+            'followers': '—', 'following': '—', 'posts': '—', 'verified': '—', 'url': url,
+            'avatar_url': '', 'created_at': '', 'location': '', 'status': 'found', 'extra': {},
+        }
+        d.update({k: ('' if v is None else v) for k, v in kw.items()})
+        for k in ('followers', 'following', 'posts'):
+            if isinstance(d[k], int):
+                d[k] = f"{d[k]:,}"
+        self.progress.emit(f"  ✅ {platform}: found {d['username']}")
+        self.profile_found.emit(d)
+
+    def _not_found(self, platform):
+        self.progress.emit(f"  ↳ {platform}: not found")
+
+    def _http_issue(self, platform, resp):
+        msg = {403: 'blocked (403)', 429: 'rate limited (429)'}.get(resp.status_code, f'HTTP {resp.status_code}')
+        self.progress.emit(f"  ⚠️  {platform}: {msg} — result unknown")
+        self._errors += 1
+
+    def _manual(self, platform, url):
+        """Login-walled platform: give the link, never claim the account exists."""
+        self._unverified += 1
+        self.progress.emit(f"  ❔ {platform}: cannot be verified without login — check manually")
+        self.profile_found.emit({
+            'platform': platform, 'username': self._username, 'display_name': '',
+            'bio': 'UNVERIFIED — this platform requires login; open the link to check by hand.',
+            'followers': '—', 'following': '—', 'posts': '—', 'verified': '—', 'url': url,
+            'avatar_url': '', 'created_at': '', 'location': '', 'status': 'unverified',
+            'extra': {'note': 'Not counted as found'},
+        })
+
+    def _get(self, url, json_api=True, **kw):
+        return requests.get(url, headers=JSON_HEADERS if json_api else HEADERS, timeout=TIMEOUT, **kw)
+
+    # ── platforms ────────────────────────────────────────────────────────
 
     def _check_github(self):
-        self.progress.emit("Checking GitHub API...")
-        url = f"https://api.github.com/users/{self._username}"
-        try:
-            resp = requests.get(url, headers=JSON_HEADERS, timeout=TIMEOUT)
-            if resp.status_code == 200:
-                d = resp.json()
-                self._found += 1
-                self.progress.emit(f"  ↳ GitHub: found @{d.get('login', self._username)}")
-                self.profile_found.emit({
-                    'platform':     'GitHub',
-                    'username':     d.get('login', self._username),
-                    'display_name': d.get('name', '') or '',
-                    'bio':          d.get('bio', '') or '',
-                    'followers':    str(d.get('followers', 0)),
-                    'following':    str(d.get('following', 0)),
-                    'posts':        str(d.get('public_repos', 0)),
-                    'verified':     'No',
-                    'url':          d.get('html_url', f"https://github.com/{self._username}"),
-                    'avatar_url':   d.get('avatar_url', ''),
-                    'created_at':   d.get('created_at', ''),
-                    'location':     d.get('location', '') or '',
-                    'extra': {
-                        'blog':         d.get('blog', '') or '',
-                        'company':      d.get('company', '') or '',
-                        'public_repos': d.get('public_repos', 0),
-                        'public_gists': d.get('public_gists', 0),
-                        'type':         d.get('type', ''),
-                        'hireable':     d.get('hireable', False),
-                    },
-                })
-            elif resp.status_code == 404:
-                self.progress.emit("  ↳ GitHub: profile not found")
-            elif resp.status_code == 403:
-                self.progress.emit("  ↳ GitHub: rate limited — try again later")
-            else:
-                self.progress.emit(f"  ↳ GitHub: HTTP {resp.status_code}")
-        except Exception as e:
-            self.progress.emit(f"  ↳ GitHub error: {e}")
-            self._errors += 1
+        r = self._get(f"https://api.github.com/users/{self._username}")
+        if r.status_code == 404:
+            return self._not_found('GitHub')
+        if r.status_code != 200:
+            return self._http_issue('GitHub', r)
+        d = r.json()
+        self._profile('GitHub', d.get('html_url'), username=d.get('login'),
+                      display_name=d.get('name') or '', bio=d.get('bio') or '',
+                      followers=d.get('followers', 0), following=d.get('following', 0),
+                      posts=d.get('public_repos', 0), avatar_url=d.get('avatar_url', ''),
+                      created_at=_fmt_date(d.get('created_at', '')), location=d.get('location') or '',
+                      extra={'blog': d.get('blog') or '', 'company': d.get('company') or '',
+                             'email': d.get('email') or '', 'twitter': d.get('twitter_username') or '',
+                             'public_gists': d.get('public_gists', 0), 'type': d.get('type', ''),
+                             'updated_at': d.get('updated_at', '')})
 
-    # ── Reddit ─────────────────────────────────────────────────────────────────
+    def _check_gitlab(self):
+        r = self._get("https://gitlab.com/api/v4/users", params={'username': self._username})
+        if r.status_code != 200:
+            return self._http_issue('GitLab', r)
+        users = r.json()
+        if not users:
+            return self._not_found('GitLab')
+        d = users[0]
+        detail = self._get(f"https://gitlab.com/api/v4/users/{d['id']}")
+        if detail.status_code == 200:
+            d = {**d, **detail.json()}
+        self._profile('GitLab', d.get('web_url'), username=d.get('username'),
+                      display_name=d.get('name', ''), bio=d.get('bio') or '',
+                      avatar_url=d.get('avatar_url', ''), created_at=_fmt_date(d.get('created_at', '')),
+                      location=d.get('location') or '',
+                      followers=d.get('followers', '—'), following=d.get('following', '—'),
+                      extra={'state': d.get('state', ''), 'website': d.get('website_url') or '',
+                             'organization': d.get('organization') or '', 'job_title': d.get('job_title') or ''})
 
     def _check_reddit(self):
-        self.progress.emit("Checking Reddit API...")
-        url = f"https://www.reddit.com/user/{self._username}/about.json"
-        try:
-            resp = requests.get(url, headers=JSON_HEADERS, timeout=TIMEOUT)
-            if resp.status_code == 200:
-                data = resp.json().get('data', {})
-                self._found += 1
-                name    = data.get('name', self._username)
-                created = _fmt_date(data.get('created_utc', 0))
-                icon    = data.get('icon_img', '')
-                if '?' in icon:
-                    icon = icon.split('?')[0]
-                karma = data.get('link_karma', 0) + data.get('comment_karma', 0)
-                self.progress.emit(f"  ↳ Reddit: found u/{name}")
-                self.profile_found.emit({
-                    'platform':     'Reddit',
-                    'username':     name,
-                    'display_name': data.get('subreddit', {}).get('title', '') or name,
-                    'bio':          data.get('subreddit', {}).get('public_description', '') or '',
-                    'followers':    str(data.get('subreddit', {}).get('subscribers', 0)),
-                    'following':    '—',
-                    'posts':        str(data.get('link_karma', 0)),
-                    'verified':     'Yes' if data.get('verified', False) else 'No',
-                    'url':          f"https://www.reddit.com/user/{name}",
-                    'avatar_url':   icon,
-                    'created_at':   created,
-                    'location':     '',
-                    'extra': {
-                        'link_karma':         data.get('link_karma', 0),
-                        'comment_karma':      data.get('comment_karma', 0),
-                        'total_karma':        karma,
-                        'is_gold':            data.get('is_gold', False),
-                        'is_mod':             data.get('is_mod', False),
-                        'has_verified_email': data.get('has_verified_email', False),
-                    },
-                })
-            elif resp.status_code == 404:
-                self.progress.emit("  ↳ Reddit: user not found")
-            elif resp.status_code == 429:
-                self.progress.emit("  ↳ Reddit: rate limited")
-            else:
-                self.progress.emit(f"  ↳ Reddit: HTTP {resp.status_code}")
-        except Exception as e:
-            self.progress.emit(f"  ↳ Reddit error: {e}")
-            self._errors += 1
+        r = requests.get(f"https://www.reddit.com/user/{self._username}/about.json",
+                         headers={'User-Agent': f'python:inspector-rabbit:{net.APP_VERSION} (OSINT research)'},
+                         timeout=TIMEOUT)
+        if r.status_code == 404:
+            return self._not_found('Reddit')
+        if r.status_code != 200:
+            self._http_issue('Reddit', r)
+            return self._manual('Reddit', f"https://www.reddit.com/user/{self._username}")
+        data = r.json().get('data', {})
+        if data.get('is_suspended'):
+            return self._profile('Reddit', f"https://www.reddit.com/user/{self._username}",
+                                 bio='Account suspended', extra={'is_suspended': True})
+        sub = data.get('subreddit') or {}
+        self._profile('Reddit', f"https://www.reddit.com/user/{data.get('name', self._username)}",
+                      username=data.get('name', self._username),
+                      display_name=sub.get('title') or '', bio=sub.get('public_description') or '',
+                      followers=sub.get('subscribers', 0), posts=data.get('link_karma', 0),
+                      verified='Yes' if data.get('verified') else 'No',
+                      avatar_url=(data.get('icon_img') or '').split('?')[0],
+                      created_at=_fmt_date(data.get('created_utc', 0)),
+                      extra={'link_karma': data.get('link_karma', 0),
+                             'comment_karma': data.get('comment_karma', 0),
+                             'is_mod': data.get('is_mod', False),
+                             'has_verified_email': data.get('has_verified_email', False)})
 
-    # ── YouTube ────────────────────────────────────────────────────────────────
+    def _check_bluesky(self):
+        actor = self._username if '.' in self._username else f"{self._username}.bsky.social"
+        r = self._get("https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile", params={'actor': actor})
+        if r.status_code == 400:
+            return self._not_found('Bluesky')
+        if r.status_code != 200:
+            return self._http_issue('Bluesky', r)
+        d = r.json()
+        self._profile('Bluesky', f"https://bsky.app/profile/{d.get('handle')}", username=d.get('handle'),
+                      display_name=d.get('displayName', ''), bio=d.get('description', ''),
+                      followers=d.get('followersCount', 0), following=d.get('followsCount', 0),
+                      posts=d.get('postsCount', 0), avatar_url=d.get('avatar', ''),
+                      created_at=_fmt_date(d.get('createdAt', '')), extra={'did': d.get('did', '')})
+
+    def _check_mastodon(self):
+        r = self._get("https://mastodon.social/api/v1/accounts/lookup", params={'acct': self._username})
+        if r.status_code == 404:
+            return self._not_found('Mastodon')
+        if r.status_code != 200:
+            return self._http_issue('Mastodon', r)
+        d = r.json()
+        self._profile('Mastodon', d.get('url'), username=d.get('acct'),
+                      display_name=d.get('display_name', ''), bio=_strip(d.get('note', '')),
+                      followers=d.get('followers_count', 0), following=d.get('following_count', 0),
+                      posts=d.get('statuses_count', 0), avatar_url=d.get('avatar', ''),
+                      created_at=_fmt_date(d.get('created_at', '')),
+                      extra={'bot': d.get('bot', False), 'last_status_at': d.get('last_status_at') or '',
+                             'fields': {f.get('name'): _strip(f.get('value', ''), 120) for f in d.get('fields', [])}})
+
+    def _check_keybase(self):
+        r = self._get("https://keybase.io/_/api/1.0/user/lookup.json",
+                      params={'usernames': self._username,
+                              'fields': 'basics,profile,proofs_summary,cryptocurrency_addresses'})
+        if r.status_code != 200:
+            return self._http_issue('Keybase', r)
+        them = (r.json().get('them') or [None])[0]
+        if not them:
+            return self._not_found('Keybase')
+        prof = them.get('profile') or {}
+        proofs = (them.get('proofs_summary') or {}).get('all', []) or []
+        self._profile('Keybase', f"https://keybase.io/{self._username}",
+                      display_name=prof.get('full_name') or '', bio=prof.get('bio') or '',
+                      location=prof.get('location') or '',
+                      created_at=_fmt_date((them.get('basics') or {}).get('ctime', '')),
+                      extra={'proofs': [f"{p.get('proof_type')}: {p.get('nametag')} ({p.get('service_url')})"
+                                        for p in proofs]})
+
+    def _check_hackernews(self):
+        r = self._get(f"https://hacker-news.firebaseio.com/v0/user/{self._username}.json")
+        if r.status_code != 200:
+            return self._http_issue('HackerNews', r)
+        d = r.json()
+        if not d:
+            return self._not_found('HackerNews')
+        self._profile('HackerNews', f"https://news.ycombinator.com/user?id={d.get('id')}",
+                      username=d.get('id'), bio=_strip(d.get('about', '')),
+                      posts=len(d.get('submitted', []) or []), created_at=_fmt_date(d.get('created', 0)),
+                      extra={'karma': d.get('karma', 0)})
+
+    def _check_devto(self):
+        r = self._get("https://dev.to/api/users/by_username", params={'url': self._username})
+        if r.status_code == 404:
+            return self._not_found('DEV.to')
+        if r.status_code != 200:
+            return self._http_issue('DEV.to', r)
+        d = r.json()
+        self._profile('DEV.to', f"https://dev.to/{d.get('username')}", username=d.get('username'),
+                      display_name=d.get('name', ''), bio=d.get('summary') or '',
+                      location=d.get('location') or '', avatar_url=d.get('profile_image', ''),
+                      created_at=d.get('joined_at', ''),
+                      extra={'twitter': d.get('twitter_username') or '', 'github': d.get('github_username') or '',
+                             'website': d.get('website_url') or ''})
+
+    def _check_chesscom(self):
+        r = self._get(f"https://api.chess.com/pub/player/{self._username.lower()}")
+        if r.status_code == 404:
+            return self._not_found('Chess.com')
+        if r.status_code != 200:
+            return self._http_issue('Chess.com', r)
+        d = r.json()
+        self._profile('Chess.com', d.get('url'), username=d.get('username'), display_name=d.get('name', ''),
+                      followers=d.get('followers', 0), avatar_url=d.get('avatar', ''),
+                      created_at=_fmt_date(d.get('joined', 0)), location=d.get('location', ''),
+                      extra={'country': (d.get('country') or '').rsplit('/', 1)[-1], 'status': d.get('status', ''),
+                             'last_online': _fmt_date(d.get('last_online', 0)), 'title': d.get('title', '')})
+
+    def _check_lichess(self):
+        r = self._get(f"https://lichess.org/api/user/{self._username}")
+        if r.status_code == 404:
+            return self._not_found('Lichess')
+        if r.status_code != 200:
+            return self._http_issue('Lichess', r)
+        d = r.json()
+        if d.get('disabled'):
+            return self._profile('Lichess', f"https://lichess.org/@/{d.get('username')}", bio='Account closed')
+        prof = d.get('profile') or {}
+        self._profile('Lichess', d.get('url'), username=d.get('username'),
+                      display_name=prof.get('realName', ''), bio=prof.get('bio', ''),
+                      location=prof.get('location', ''), posts=(d.get('count') or {}).get('all', 0),
+                      created_at=_fmt_date(d.get('createdAt', 0)),
+                      extra={'seen_at': _fmt_date(d.get('seenAt', 0)), 'links': prof.get('links', ''),
+                             'flag': prof.get('flag', '')})
+
+    def _check_dockerhub(self):
+        r = self._get(f"https://hub.docker.com/v2/users/{self._username}/")
+        if r.status_code == 404:
+            return self._not_found('Docker Hub')
+        if r.status_code != 200:
+            return self._http_issue('Docker Hub', r)
+        d = r.json()
+        self._profile('Docker Hub', f"https://hub.docker.com/u/{d.get('username')}",
+                      username=d.get('username'), display_name=d.get('full_name', ''),
+                      location=d.get('location', ''), avatar_url=d.get('gravatar_url', ''),
+                      created_at=_fmt_date(d.get('date_joined', '')),
+                      extra={'company': d.get('company', ''), 'profile_url': d.get('profile_url', '')})
 
     def _check_youtube(self):
-        """
-        Scrape YouTube channel page for og tags and extract subscriber count
-        from the page's inline JSON (ytInitialData). No API key required.
-        """
-        self.progress.emit("Checking YouTube (channel page scrape)...")
         if not _BS4:
-            self.progress.emit("  ↳ YouTube: beautifulsoup4 not installed")
-            self._errors += 1
-            return
-
+            raise RuntimeError('beautifulsoup4 not installed')
         url = f"https://www.youtube.com/@{self._username}"
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r = self._get(url, json_api=False, cookies={'CONSENT': 'YES+1'})
+        if r.status_code == 404:
+            return self._not_found('YouTube')
+        if r.status_code != 200:
+            return self._http_issue('YouTube', r)
+        if 'consent.youtube.com' in r.url:
+            return self._manual('YouTube', url)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        title = _og(soup, 'og:title')
+        if not title:
+            return self._not_found('YouTube')
+        text = r.text
 
-            if resp.status_code == 404:
-                # Try legacy /user/ path
-                url = f"https://www.youtube.com/user/{self._username}"
-                resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-
-            if resp.status_code != 200:
-                self.progress.emit(f"  ↳ YouTube: HTTP {resp.status_code}")
-                return
-
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            title       = _og(soup, 'og:title')
-            description = _og(soup, 'og:description')
-            thumbnail   = _og(soup, 'og:image')
-
-            if not title:
-                self.progress.emit("  ↳ YouTube: channel not found or no og:title")
-                return
-
-            # Subscriber count lives inside ytInitialData JSON embedded in the page
-            subs = '—'
-            sub_match = re.search(
-                r'"subscriberCountText":\{"simpleText":"([^"]+)"', resp.text
-            )
-            if sub_match:
-                subs = sub_match.group(1)
-            else:
-                # Newer format
-                sub_match2 = re.search(
-                    r'"subscriberCountText":\{[^}]*?"text":"([^"]+)"', resp.text
-                )
-                if sub_match2:
-                    subs = sub_match2.group(1)
-
-            # Video count
-            video_count = '—'
-            vid_match = re.search(
-                r'"videosCountText":\{"runs":\[\{"text":"([^"]+)"', resp.text
-            )
-            if vid_match:
-                video_count = vid_match.group(1)
-
-            # Channel ID
-            channel_id = ''
-            cid_match = re.search(r'"channelId":"(UC[^"]+)"', resp.text)
-            if cid_match:
-                channel_id = cid_match.group(1)
-
-            # Joined date
-            joined = ''
-            joined_match = re.search(
-                r'"joinedDateText":\{"runs":\[.*?"text":"([^"]+)"', resp.text
-            )
-            if joined_match:
-                joined = joined_match.group(1)
-
-            self._found += 1
-            self.progress.emit(f"  ↳ YouTube: found @{self._username} — {subs} subscribers")
-            self.profile_found.emit({
-                'platform':     'YouTube',
-                'username':     self._username,
-                'display_name': title,
-                'bio':          description[:250] if description else '',
-                'followers':    subs,
-                'following':    '—',
-                'posts':        video_count,
-                'verified':     '—',
-                'url':          url,
-                'avatar_url':   thumbnail,
-                'created_at':   joined,
-                'location':     '',
-                'extra': {
-                    'channel_id':   channel_id,
-                    'subscribers':  subs,
-                    'video_count':  video_count,
-                    'channel_url':  url,
-                },
-            })
-
-        except Exception as e:
-            self.progress.emit(f"  ↳ YouTube error: {e}")
-            self._errors += 1
-
-    # ── Twitch ─────────────────────────────────────────────────────────────────
+        def rx(p):
+            m = re.search(p, text)
+            return m.group(1) if m else ''
+        subs = rx(r'"subscriberCountText":\{"simpleText":"([^"]+)"') or \
+            rx(r'"subscriberCountText":\{[^}]*?"content":"([^"]+)"') or rx(r'([\d.,]+[KMB]? subscribers)')
+        videos = rx(r'"videosCountText":\{"runs":\[\{"text":"([^"]+)"') or rx(r'([\d.,]+[KMB]? videos)')
+        self._profile('YouTube', url, display_name=title, bio=_og(soup, 'og:description')[:250],
+                      followers=subs or '—', posts=videos or '—', avatar_url=_og(soup, 'og:image'),
+                      extra={'channel_id': rx(r'"(?:externalId|channelId)":"(UC[\w-]{22})"')})
 
     def _check_twitch(self):
-        """
-        Scrape Twitch channel page og tags and extract inline JSON data.
-        No OAuth required for basic public profile info.
-        """
-        self.progress.emit("Checking Twitch (channel page scrape)...")
         if not _BS4:
-            self.progress.emit("  ↳ Twitch: beautifulsoup4 not installed")
-            self._errors += 1
-            return
-
+            raise RuntimeError('beautifulsoup4 not installed')
         url = f"https://www.twitch.tv/{self._username}"
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            if resp.status_code == 404:
-                self.progress.emit("  ↳ Twitch: channel not found")
-                return
-            if resp.status_code != 200:
-                self.progress.emit(f"  ↳ Twitch: HTTP {resp.status_code}")
-                return
-
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            title       = _og(soup, 'og:title') or _og(soup, 'twitter:title')
-            description = _og(soup, 'og:description') or _og(soup, 'twitter:description')
-            thumbnail   = _og(soup, 'og:image') or _og(soup, 'twitter:image')
-
-            if not title:
-                self.progress.emit("  ↳ Twitch: channel not found or blocked")
-                return
-
-            # Extract follower count from embedded JSON if available
-            followers = '—'
-            fol_match = re.search(
-                r'"followers_count"\s*:\s*(\d+)', resp.text
-            )
-            if fol_match:
-                followers = f"{int(fol_match.group(1)):,}"
-
-            # Extract description from JSON if og:description is empty
-            if not description:
-                desc_match = re.search(
-                    r'"description"\s*:\s*"([^"]{5,200})"', resp.text
-                )
-                if desc_match:
-                    description = desc_match.group(1)
-
-            # Live status
-            is_live = 'Yes' if re.search(r'"isLiveBroadcast"\s*:\s*true', resp.text) else 'No'
-
-            self._found += 1
-            self.progress.emit(f"  ↳ Twitch: found {self._username} (live: {is_live})")
-            self.profile_found.emit({
-                'platform':     'Twitch',
-                'username':     self._username,
-                'display_name': title.replace(' - Twitch', '').strip(),
-                'bio':          description[:250] if description else '',
-                'followers':    followers,
-                'following':    '—',
-                'posts':        '—',
-                'verified':     '—',
-                'url':          url,
-                'avatar_url':   thumbnail,
-                'created_at':   '',
-                'location':     '',
-                'extra': {
-                    'is_live':    is_live,
-                    'channel_url': url,
-                },
-            })
-
-        except Exception as e:
-            self.progress.emit(f"  ↳ Twitch error: {e}")
-            self._errors += 1
-
-    # ── Instagram ──────────────────────────────────────────────────────────────
-
-    def _check_instagram(self):
-        """
-        Scrape Instagram public profile page for og meta tags.
-        Private accounts and heavy bot detection may block this.
-        """
-        self.progress.emit("Checking Instagram (og-meta scrape)...")
-        if not _BS4:
-            self.progress.emit("  ↳ Instagram: beautifulsoup4 not installed")
+        r = self._get(url, json_api=False)
+        if r.status_code != 200:
+            return self._http_issue('Twitch', r)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        title = _og(soup, 'og:title')
+        # Twitch serves the same SPA shell for every path; real channels get
+        # "<name> - Twitch" as og:title, unknown ones just "Twitch".
+        if not title or title.strip().lower() == 'twitch' or ' - Twitch' not in title:
+            return self._not_found('Twitch')
+        # Twitch's SSR occasionally glitches; require the same answer twice
+        r2 = self._get(url, json_api=False)
+        t2 = _og(BeautifulSoup(r2.text, 'html.parser'), 'og:title') if r2.status_code == 200 else ''
+        if ' - Twitch' not in t2:
+            self.progress.emit("  ⚠️  Twitch: inconsistent responses — result unknown")
             self._errors += 1
             return
-
-        url = f"https://www.instagram.com/{self._username}/"
-        try:
-            resp = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            if resp.status_code == 404:
-                self.progress.emit("  ↳ Instagram: profile not found")
-                return
-            if resp.status_code != 200:
-                self.progress.emit(f"  ↳ Instagram: HTTP {resp.status_code} — may require login")
-                self._url_fallback('Instagram', url)
-                return
-
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            title       = _og(soup, 'og:title')
-            description = _og(soup, 'og:description')
-            thumbnail   = _og(soup, 'og:image')
-
-            if not title or 'login' in resp.url.lower():
-                self.progress.emit("  ↳ Instagram: redirected to login — URL only")
-                self._url_fallback('Instagram', url)
-                return
-
-            # Parse "X Followers, Y Following, Z Posts — Full Name: ..."
-            followers = following = posts = bio = ''
-            if description:
-                fol_m  = re.search(r'([\d,.KkMm]+)\s*Followers', description)
-                fing_m = re.search(r'([\d,.KkMm]+)\s*Following', description)
-                post_m = re.search(r'([\d,.KkMm]+)\s*Posts', description)
-                if fol_m:  followers = fol_m.group(1)
-                if fing_m: following = fing_m.group(1)
-                if post_m: posts     = post_m.group(1)
-                # Bio is after the last dash
-                bio_m = re.search(r'-\s*(.+)$', description.strip())
-                if bio_m: bio = bio_m.group(1).strip()
-
-            display_name = title.replace('(@' + self._username + ')', '').replace('• Instagram', '').strip()
-
-            self._found += 1
-            self.progress.emit(f"  ↳ Instagram: found @{self._username} ({followers} followers)")
-            self.profile_found.emit({
-                'platform':     'Instagram',
-                'username':     self._username,
-                'display_name': display_name,
-                'bio':          bio or description[:200],
-                'followers':    followers or '—',
-                'following':    following or '—',
-                'posts':        posts or '—',
-                'verified':     '—',
-                'url':          url,
-                'avatar_url':   thumbnail,
-                'created_at':   '',
-                'location':     '',
-                'extra':        {'note': 'Public data from og:meta tags only'},
-            })
-
-        except Exception as e:
-            self.progress.emit(f"  ↳ Instagram error: {e}")
-            self._errors += 1
-
-    # ── Twitter/X ──────────────────────────────────────────────────────────────
-
-    def _check_twitter(self):
-        """
-        Twitter/X requires authentication for all API access and aggressively
-        blocks unauthenticated scraping. Providing URL link only.
-        """
-        self.progress.emit("Twitter/X: API auth required — providing URL only")
-        self._url_fallback(
-            'Twitter/X',
-            f"https://twitter.com/{self._username}",
-            note='Twitter/X v2 API requires OAuth 2.0 bearer token for all endpoints'
-        )
-
-    # ── TikTok ─────────────────────────────────────────────────────────────────
-
-    def _check_tiktok(self):
-        """
-        TikTok uses heavy fingerprinting and bot detection.
-        Providing URL link only.
-        """
-        self.progress.emit("TikTok: bot detection active — providing URL only")
-        self._url_fallback(
-            'TikTok',
-            f"https://www.tiktok.com/@{self._username}",
-            note='TikTok uses aggressive bot detection; open URL manually in browser'
-        )
-
-    # ── Helpers ────────────────────────────────────────────────────────────────
-
-    def _url_fallback(self, platform: str, url: str, note: str = '') -> None:
-        """Emit a URL-only result (profile exists but data cannot be fetched)."""
-        self._found += 1
-        self.profile_found.emit({
-            'platform':     platform,
-            'username':     self._username,
-            'display_name': '',
-            'bio':          'Open URL in browser to view profile',
-            'followers':    '—',
-            'following':    '—',
-            'posts':        '—',
-            'verified':     '—',
-            'url':          url,
-            'avatar_url':   '',
-            'created_at':   '',
-            'location':     '',
-            'extra':        {'note': note or 'Data unavailable without authentication'},
-        })
+        desc = _og(soup, 'og:description')
+        self._profile('Twitch', url, display_name=title.replace(' - Twitch', '').strip(),
+                      bio=desc[:250], avatar_url=_og(soup, 'og:image'),
+                      extra={'is_live': 'Yes' if '"isLiveBroadcast":true' in r.text else 'No'})
